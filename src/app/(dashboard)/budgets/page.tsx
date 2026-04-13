@@ -15,11 +15,11 @@ import {
   useUpdateBudget,
   useCopyBudget,
 } from "@/hooks/use-budget"
-import { useCategories } from "@/hooks/use-categories"
+import { useGroupedCategories } from "@/hooks/use-categories"
 import { formatCurrency } from "@/lib/utils"
 import { BudgetComparison } from "@/components/budget/BudgetComparison"
 import { AnnualOverview } from "@/components/budget/AnnualOverview"
-import type { Category, BudgetWithItems } from "@/types"
+import type { Category, CategoryWithChildren, BudgetWithItems } from "@/types"
 
 export default function BudgetsPage() {
   const now = new Date()
@@ -28,7 +28,20 @@ export default function BudgetsPage() {
   const [tab, setTab] = useState("monthly")
 
   const { data: budgets, isLoading: budgetsLoading } = useBudgets(year)
-  const { data: categories } = useCategories()
+  const { data: grouped } = useGroupedCategories()
+  // Flatten to get all leaf categories for budget item mapping
+  const categories = useMemo(() => {
+    if (!grouped) return undefined
+    const all: Category[] = []
+    for (const parent of grouped) {
+      if (parent.children.length > 0) {
+        all.push(...parent.children)
+      } else {
+        all.push(parent)
+      }
+    }
+    return all
+  }, [grouped])
   const currentBudget = budgets?.find((b) => b.month === month) ?? null
   const { data: budgetDetail, isLoading: detailLoading } = useBudgetDetail(
     currentBudget?.id ?? null,
@@ -67,26 +80,34 @@ export default function BudgetsPage() {
     setIsDirty(false)
   }, [budgetsLoading, currentBudget, categories])
 
-  const incomeCategories = useMemo(
+  const incomeGroups = useMemo(
+    () => grouped?.filter((c) => c.type === "income" && c.isActive) ?? [],
+    [grouped],
+  )
+  const expenseGroups = useMemo(
+    () => grouped?.filter((c) => c.type === "expense" && c.isActive) ?? [],
+    [grouped],
+  )
+  const incomeLeaves = useMemo(
     () => categories?.filter((c) => c.type === "income" && c.isActive) ?? [],
     [categories],
   )
-  const expenseCategories = useMemo(
+  const expenseLeaves = useMemo(
     () => categories?.filter((c) => c.type === "expense" && c.isActive) ?? [],
     [categories],
   )
 
   const totalIncome = useMemo(() => {
     let sum = 0
-    for (const cat of incomeCategories) sum += editItems.get(cat.id) ?? 0
+    for (const cat of incomeLeaves) sum += editItems.get(cat.id) ?? 0
     return sum
-  }, [editItems, incomeCategories])
+  }, [editItems, incomeLeaves])
 
   const totalExpense = useMemo(() => {
     let sum = 0
-    for (const cat of expenseCategories) sum += editItems.get(cat.id) ?? 0
+    for (const cat of expenseLeaves) sum += editItems.get(cat.id) ?? 0
     return sum
-  }, [editItems, expenseCategories])
+  }, [editItems, expenseLeaves])
 
   const handleAmountChange = useCallback(
     (categoryId: string, value: string) => {
@@ -245,7 +266,7 @@ export default function BudgetsPage() {
             <div className="space-y-4">
               <BudgetCategorySection
                 title="수입"
-                categories={incomeCategories}
+                groups={incomeGroups}
                 editItems={editItems}
                 budgetDetail={budgetDetail}
                 onAmountChange={handleAmountChange}
@@ -254,7 +275,7 @@ export default function BudgetsPage() {
               />
               <BudgetCategorySection
                 title="지출"
-                categories={expenseCategories}
+                groups={expenseGroups}
                 editItems={editItems}
                 budgetDetail={budgetDetail}
                 onAmountChange={handleAmountChange}
@@ -318,7 +339,7 @@ export default function BudgetsPage() {
 
 interface BudgetCategorySectionProps {
   title: string
-  categories: Category[]
+  groups: CategoryWithChildren[]
   editItems: Map<string, number>
   budgetDetail: BudgetWithItems | undefined
   onAmountChange: (categoryId: string, value: string) => void
@@ -328,14 +349,14 @@ interface BudgetCategorySectionProps {
 
 function BudgetCategorySection({
   title,
-  categories,
+  groups,
   editItems,
   budgetDetail,
   onAmountChange,
   total,
   colorClass,
 }: BudgetCategorySectionProps) {
-  if (categories.length === 0) return null
+  if (groups.length === 0) return null
 
   return (
     <Card>
@@ -349,37 +370,64 @@ function BudgetCategorySection({
       </CardHeader>
       <CardContent className="p-0">
         <div className="divide-y">
-          {categories.map((cat) => {
-            const amount = editItems.get(cat.id) ?? 0
-            const actual = budgetDetail?.items.find(
-              (i) => i.categoryId === cat.id,
+          {groups.map((parent) => {
+            const leaves =
+              parent.children.length > 0 ? parent.children : [parent]
+            const groupTotal = leaves.reduce(
+              (sum, c) => sum + (editItems.get(c.id) ?? 0),
+              0,
             )
 
             return (
-              <div
-                key={cat.id}
-                className="flex items-center gap-3 px-4 py-2.5"
-              >
-                {cat.icon && (
-                  <span className="shrink-0 text-base">{cat.icon}</span>
-                )}
-                <span className="min-w-0 flex-1 truncate text-sm font-medium">
-                  {cat.name}
-                </span>
-                {actual && actual.actualAmount > 0 && (
-                  <span className="shrink-0 text-xs font-mono text-muted-foreground">
-                    실적 {formatCurrency(actual.actualAmount)}
+              <div key={parent.id}>
+                {/* 대분류 헤더 */}
+                <div className="flex items-center gap-3 px-4 py-2 bg-muted/40">
+                  {parent.icon && (
+                    <span className="shrink-0 text-base">{parent.icon}</span>
+                  )}
+                  <span className="flex-1 text-sm font-semibold">
+                    {parent.name}
                   </span>
-                )}
-                <Input
-                  type="number"
-                  min={0}
-                  step={10000}
-                  value={amount || ""}
-                  onChange={(e) => onAmountChange(cat.id, e.target.value)}
-                  placeholder="0"
-                  className="h-8 w-28 shrink-0 text-right font-mono"
-                />
+                  <span className="text-xs font-mono text-muted-foreground">
+                    {formatCurrency(groupTotal)}
+                  </span>
+                </div>
+                {/* 소분류 입력 */}
+                {leaves.map((cat) => {
+                  const amount = editItems.get(cat.id) ?? 0
+                  const actual = budgetDetail?.items.find(
+                    (i) => i.categoryId === cat.id,
+                  )
+                  const isChild = cat.id !== parent.id
+
+                  return (
+                    <div
+                      key={cat.id}
+                      className="flex items-center gap-3 px-4 py-2.5 pl-10"
+                    >
+                      {cat.icon && isChild && (
+                        <span className="shrink-0 text-sm">{cat.icon}</span>
+                      )}
+                      <span className="min-w-0 flex-1 truncate text-sm">
+                        {isChild ? cat.name : cat.name}
+                      </span>
+                      {actual && actual.actualAmount > 0 && (
+                        <span className="shrink-0 text-xs font-mono text-muted-foreground">
+                          실적 {formatCurrency(actual.actualAmount)}
+                        </span>
+                      )}
+                      <Input
+                        type="number"
+                        min={0}
+                        step={10000}
+                        value={amount || ""}
+                        onChange={(e) => onAmountChange(cat.id, e.target.value)}
+                        placeholder="0"
+                        className="h-8 w-28 shrink-0 text-right font-mono"
+                      />
+                    </div>
+                  )
+                })}
               </div>
             )
           })}
