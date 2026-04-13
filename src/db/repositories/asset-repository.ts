@@ -1,6 +1,6 @@
 import { eq, and, desc } from 'drizzle-orm'
 import { getDb } from '../index'
-import { assets, assetValuations } from '../schema'
+import { assets, assetCategories, assetValuations } from '../schema'
 import { generateId } from '../../lib/utils'
 import type { CreateAssetInput, UpdateAssetInput, CreateValuationInput } from '../../lib/validators'
 
@@ -24,22 +24,15 @@ export async function findAssetById(id: string) {
   return rows[0] ?? null
 }
 
-export async function findAssetsByType(type: string) {
+export async function findAssetsByAssetCategoryKind(kind: 'financial' | 'non_financial') {
   const db = getDb()
   return db
-    .select()
+    .select({ asset: assets })
     .from(assets)
-    .where(and(eq(assets.type, type as any), eq(assets.isActive, true)))
+    .innerJoin(assetCategories, eq(assets.assetCategoryId, assetCategories.id))
+    .where(and(eq(assetCategories.kind, kind), eq(assets.isActive, true)))
     .orderBy(assets.name)
-}
-
-export async function findAssetsByCategory(category: 'financial' | 'non_financial') {
-  const db = getDb()
-  return db
-    .select()
-    .from(assets)
-    .where(and(eq(assets.category, category), eq(assets.isActive, true)))
-    .orderBy(assets.name)
+    .then(rows => rows.map(r => r.asset))
 }
 
 export async function createAsset(input: CreateAssetInput) {
@@ -50,9 +43,7 @@ export async function createAsset(input: CreateAssetInput) {
     .values({
       id,
       name: input.name,
-      type: input.type,
-      category: input.category,
-      assetCategoryId: input.assetCategoryId ?? null,
+      assetCategoryId: input.assetCategoryId,
       acquisitionDate: input.acquisitionDate,
       acquisitionCost: input.acquisitionCost,
       currentValue: input.currentValue,
@@ -74,8 +65,6 @@ export async function updateAsset(id: string, input: UpdateAssetInput) {
   await db.update(assets)
     .set({
       ...(input.name !== undefined && { name: input.name }),
-      ...(input.type !== undefined && { type: input.type }),
-      ...(input.category !== undefined && { category: input.category }),
       ...(input.assetCategoryId !== undefined && { assetCategoryId: input.assetCategoryId }),
       ...(input.acquisitionDate !== undefined && { acquisitionDate: input.acquisitionDate }),
       ...(input.acquisitionCost !== undefined && { acquisitionCost: input.acquisitionCost }),

@@ -3,11 +3,10 @@ import { getAssetsService, createAssetService } from '@/lib/services/asset-servi
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl
-  const type = searchParams.get('type') ?? undefined
-  const category = searchParams.get('category') ?? undefined
+  const kind = searchParams.get('kind') ?? undefined
   const activeOnly = searchParams.get('activeOnly') !== 'false'
 
-  const result = await getAssetsService({ type, category, activeOnly })
+  const result = await getAssetsService({ kind, activeOnly })
   return Response.json(result)
 }
 

@@ -1,11 +1,18 @@
 "use client";
 
 import { useState, useCallback, useMemo } from "react";
-import { Plus, Pencil, Trash2, BarChart3 } from "lucide-react";
+import { Plus, Pencil, Trash2, BarChart3, Link2, Unlink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import {
   AccountFormDialog,
   ACCOUNT_TYPE_LABELS,
@@ -17,7 +24,7 @@ import {
   useUpdateAccount,
   useDeleteAccount,
 } from "@/hooks/use-accounts";
-import { useAssets } from "@/hooks/use-assets";
+import { useAssets, useUpdateAsset } from "@/hooks/use-assets";
 import { formatKRW } from "@/lib/format";
 import type { Account, AccountType, Asset } from "@/types";
 import type { CreateAccountInput } from "@/lib/validators/account";
@@ -49,9 +56,39 @@ export default function AccountsPage() {
   const updateMutation = useUpdateAccount();
   const deleteMutation = useDeleteAccount();
 
+  const updateAsset = useUpdateAsset();
+
   const [formOpen, setFormOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Account | null>(null);
+  const [linkAccountId, setLinkAccountId] = useState<string | null>(null);
+  const [selectedAssetId, setSelectedAssetId] = useState("");
+
+  // 미연결 자산 (accountId가 null인 자산)
+  const unlinkedAssets = useMemo(
+    () => (assets ?? []).filter((a) => a.accountId === null),
+    [assets],
+  );
+
+  const handleLinkAsset = useCallback(() => {
+    if (!linkAccountId || !selectedAssetId) return;
+    updateAsset.mutate(
+      { id: selectedAssetId, data: { accountId: linkAccountId } },
+      {
+        onSuccess: () => {
+          setLinkAccountId(null);
+          setSelectedAssetId("");
+        },
+      },
+    );
+  }, [linkAccountId, selectedAssetId, updateAsset]);
+
+  const handleUnlinkAsset = useCallback(
+    (assetId: string) => {
+      updateAsset.mutate({ id: assetId, data: { accountId: null } });
+    },
+    [updateAsset],
+  );
 
   const grouped = useMemo(() => {
     if (!accounts) return new Map<AccountType, Account[]>();
@@ -204,9 +241,27 @@ export default function AccountsPage() {
                             className="flex items-center gap-1 text-xs text-muted-foreground"
                           >
                             <BarChart3 className="size-3" />
-                            <span>{asset.name}</span>
+                            <span className="flex-1">{asset.name}</span>
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              className="size-5"
+                              onClick={() => handleUnlinkAsset(asset.id)}
+                              aria-label={`${asset.name} 연결 해제`}
+                            >
+                              <Unlink className="size-3 text-muted-foreground" />
+                            </Button>
                           </div>
                         ))}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="w-full text-xs text-muted-foreground"
+                          onClick={() => { setLinkAccountId(account.id); setSelectedAssetId(""); }}
+                        >
+                          <Link2 className="size-3 mr-1" />
+                          자산 연결
+                        </Button>
                       </CardContent>
                     </Card>
                   ))}
@@ -235,6 +290,52 @@ export default function AccountsPage() {
         onConfirm={handleDeleteConfirm}
         isPending={deleteMutation.isPending}
       />
+      {/* 자산 연결 다이얼로그 */}
+      <Dialog
+        open={linkAccountId !== null}
+        onOpenChange={(open) => { if (!open) setLinkAccountId(null); }}
+      >
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>자산 연결</DialogTitle>
+          </DialogHeader>
+          {unlinkedAssets.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-4">
+              연결 가능한 자산이 없습니다. 먼저 자산을 추가하세요.
+            </p>
+          ) : (
+            <div className="flex flex-col gap-3">
+              <label className="text-sm font-medium">연결할 자산</label>
+              <select
+                className="flex h-9 w-full rounded-lg border border-input bg-transparent px-3 py-1 text-sm"
+                value={selectedAssetId}
+                onChange={(e) => setSelectedAssetId(e.target.value)}
+              >
+                <option value="">선택하세요</option>
+                {unlinkedAssets.map((asset) => (
+                  <option key={asset.id} value={asset.id}>
+                    {asset.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setLinkAccountId(null)}
+            >
+              취소
+            </Button>
+            <Button
+              onClick={handleLinkAsset}
+              disabled={!selectedAssetId || updateAsset.isPending}
+            >
+              {updateAsset.isPending ? "연결 중..." : "연결"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

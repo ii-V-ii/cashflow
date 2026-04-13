@@ -11,6 +11,13 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "@/components/ui/select"
 import { DeleteConfirmDialog } from "@/components/shared/DeleteConfirmDialog"
 import {
   useAssetCategories,
@@ -32,12 +39,14 @@ export function AssetCategoryManager() {
   const [deleteTarget, setDeleteTarget] = useState<AssetCategoryCustom | null>(null)
 
   const [formName, setFormName] = useState("")
+  const [formKind, setFormKind] = useState<"financial" | "non_financial">("financial")
   const [formIcon, setFormIcon] = useState("")
   const [formColor, setFormColor] = useState("")
 
   const handleAdd = useCallback(() => {
     setEditing(null)
     setFormName("")
+    setFormKind("financial")
     setFormIcon("")
     setFormColor("")
     setFormOpen(true)
@@ -46,6 +55,7 @@ export function AssetCategoryManager() {
   const handleEdit = useCallback((cat: AssetCategoryCustom) => {
     setEditing(cat)
     setFormName(cat.name)
+    setFormKind(cat.kind)
     setFormIcon(cat.icon ?? "")
     setFormColor(cat.color ?? "")
     setFormOpen(true)
@@ -54,6 +64,7 @@ export function AssetCategoryManager() {
   const handleSubmit = useCallback(() => {
     const data = {
       name: formName,
+      kind: formKind,
       icon: formIcon || null,
       color: formColor || null,
     }
@@ -68,7 +79,7 @@ export function AssetCategoryManager() {
         onSuccess: () => setFormOpen(false),
       })
     }
-  }, [editing, formName, formIcon, formColor, createMutation, updateMutation])
+  }, [editing, formName, formKind, formIcon, formColor, createMutation, updateMutation])
 
   const handleDeleteConfirm = useCallback(() => {
     if (!deleteTarget) return
@@ -103,6 +114,9 @@ export function AssetCategoryManager() {
                     )}
                     <span className="flex-1 text-sm font-medium truncate">
                       {cat.name}
+                    </span>
+                    <span className="text-xs text-muted-foreground shrink-0">
+                      {cat.kind === "financial" ? "금융" : "비금융"}
                     </span>
                     {cat.color && (
                       <span
@@ -166,6 +180,20 @@ export function AssetCategoryManager() {
                 value={formName}
                 onChange={(e) => setFormName(e.target.value)}
               />
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium">분류</label>
+              <Select value={formKind} onValueChange={(v) => setFormKind(v as typeof formKind)}>
+                <SelectTrigger className="w-full">
+                  <SelectValue>
+                    {(value: string) => value === "financial" ? "금융자산" : "비금융자산"}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="financial">금융자산</SelectItem>
+                  <SelectItem value="non_financial">비금융자산</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex flex-col gap-2">
               <label className="text-sm font-medium">아이콘 (선택)</label>

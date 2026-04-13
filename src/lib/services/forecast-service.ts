@@ -8,6 +8,7 @@ import {
   saveForecastResults,
   findAllAccounts,
   findAllAssets,
+  findAllAssetCategories,
 } from '@/db/repositories'
 import {
   createForecastScenarioSchema,
@@ -113,8 +114,10 @@ export async function runForecastService(
     0,
   )
 
-  // M-10: 자산 목록을 루프 밖에서 한번 조회
+  // M-10: 자산 목록과 카테고리를 루프 밖에서 한번 조회
   const activeAssets = await findAllAssets(true)
+  const allAssetCategories = await findAllAssetCategories()
+  const categoryMap = new Map(allAssetCategories.map(c => [c.id, c.name]))
 
   // 결과 생성 (누적 잔액 + 자산 투영) - 순차 처리로 cumulativeBalance 정합성 보장
   let cumulativeBalance = currentTotalBalance
@@ -127,6 +130,7 @@ export async function runForecastService(
       activeAssets,
       monthsFromStart,
       assumptions,
+      categoryMap,
     )
 
     const projectedNetWorth = cumulativeBalance + totalProjectedValue

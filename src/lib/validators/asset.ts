@@ -1,17 +1,8 @@
 import { z } from 'zod'
 
-export const assetTypeEnum = z.enum([
-  'real_estate', 'vehicle', 'stock', 'fund', 'deposit',
-  'savings', 'bond', 'crypto', 'insurance', 'pension', 'other',
-])
-
-export const assetCategoryEnum = z.enum(['financial', 'non_financial'])
-
 export const createAssetSchema = z.object({
   name: z.string().min(1).max(100),
-  type: assetTypeEnum,
-  category: assetCategoryEnum,
-  assetCategoryId: z.string().nullable().optional().default(null),
+  assetCategoryId: z.string().min(1),
   acquisitionDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   acquisitionCost: z.number().int().min(0),
   currentValue: z.number().int().min(0),

@@ -14,6 +14,7 @@ export {
 export {
   findAllAssetCategories,
   findAssetCategoryById,
+  findAssetCategoriesByKind,
   createAssetCategory,
   updateAssetCategory,
   deleteAssetCategory,
@@ -59,8 +60,7 @@ export {
 export {
   findAllAssets,
   findAssetById,
-  findAssetsByType,
-  findAssetsByCategory,
+  findAssetsByAssetCategoryKind,
   createAsset,
   updateAsset,
   deleteAsset,

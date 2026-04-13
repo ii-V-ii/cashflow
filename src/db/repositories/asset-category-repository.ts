@@ -18,6 +18,15 @@ export async function findAssetCategoryById(id: string) {
   return rows[0] ?? null
 }
 
+export async function findAssetCategoriesByKind(kind: 'financial' | 'non_financial') {
+  const db = getDb()
+  return db
+    .select()
+    .from(assetCategories)
+    .where(eq(assetCategories.kind, kind))
+    .orderBy(assetCategories.sortOrder)
+}
+
 export async function createAssetCategory(input: CreateAssetCategoryInput) {
   const db = getDb()
   const id = generateId()
@@ -28,6 +37,7 @@ export async function createAssetCategory(input: CreateAssetCategoryInput) {
     .values({
       id,
       name: input.name,
+      kind: input.kind,
       icon: input.icon ?? null,
       color: input.color ?? null,
       sortOrder,
@@ -44,6 +54,7 @@ export async function updateAssetCategory(id: string, input: UpdateAssetCategory
   await db.update(assetCategories)
     .set({
       ...(input.name !== undefined && { name: input.name }),
+      ...(input.kind !== undefined && { kind: input.kind }),
       ...(input.icon !== undefined && { icon: input.icon }),
       ...(input.color !== undefined && { color: input.color }),
       ...(input.sortOrder !== undefined && { sortOrder: input.sortOrder }),

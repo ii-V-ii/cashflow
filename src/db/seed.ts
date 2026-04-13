@@ -143,11 +143,11 @@ async function seed() {
 
   // === 기본 자산 카테고리 ===
   const defaultAssetCategories = [
-    { name: '금융자산', icon: '🏦', sortOrder: 1 },
-    { name: '부동산', icon: '🏠', sortOrder: 2 },
-    { name: '차량', icon: '🚗', sortOrder: 3 },
-    { name: '보험/연금', icon: '🛡️', sortOrder: 4 },
-    { name: '기타', icon: '📦', sortOrder: 5 },
+    { name: '금융자산', kind: 'financial' as const, icon: '🏦', sortOrder: 1 },
+    { name: '부동산', kind: 'non_financial' as const, icon: '🏠', sortOrder: 2 },
+    { name: '차량', kind: 'non_financial' as const, icon: '🚗', sortOrder: 3 },
+    { name: '보험/연금', kind: 'financial' as const, icon: '🛡️', sortOrder: 4 },
+    { name: '기타', kind: 'non_financial' as const, icon: '📦', sortOrder: 5 },
   ]
 
   await db.transaction(async (tx) => {
@@ -204,6 +204,7 @@ async function seed() {
         .values({
           id: generateId(),
           name: ac.name,
+          kind: ac.kind,
           icon: ac.icon,
           sortOrder: ac.sortOrder,
         })

@@ -8,11 +8,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
-import {
-  AssetFormDialog,
-  ASSET_TYPE_LABELS,
-  ASSET_CATEGORY_LABELS,
-} from "@/components/assets/AssetFormDialog"
+import { AssetFormDialog } from "@/components/assets/AssetFormDialog"
 import { PortfolioDonut } from "@/components/assets/PortfolioDonut"
 import { AssetCategoryManager } from "@/components/assets/AssetCategoryManager"
 import { DeleteConfirmDialog } from "@/components/shared/DeleteConfirmDialog"
@@ -23,13 +19,15 @@ import {
   useDeleteAsset,
   usePortfolioSummary,
 } from "@/hooks/use-assets"
+import { useAssetCategories } from "@/hooks/use-asset-categories"
 import { useAccounts } from "@/hooks/use-accounts"
 import { formatCurrency } from "@/lib/utils"
-import type { Asset, AssetCategory } from "@/types"
+import type { Asset, AssetCategoryKind } from "@/types"
 import type { CreateAssetInput } from "@/lib/validators/asset"
 
 export default function AssetsPage() {
   const { data: assets, isLoading } = useAssets()
+  const { data: assetCategories } = useAssetCategories()
   const { data: accounts } = useAccounts()
   const { data: portfolio } = usePortfolioSummary()
 
@@ -37,6 +35,11 @@ export default function AssetsPage() {
     if (!accounts) return new Map<string, string>()
     return new Map(accounts.map((a) => [a.id, a.name]))
   }, [accounts])
+
+  const categoryMap = useMemo(() => {
+    if (!assetCategories) return new Map<string, { name: string; icon: string | null; kind: AssetCategoryKind }>()
+    return new Map(assetCategories.map((c) => [c.id, { name: c.name, icon: c.icon, kind: c.kind }]))
+  }, [assetCategories])
   const createMutation = useCreateAsset()
   const updateMutation = useUpdateAsset()
   const deleteMutation = useDeleteAsset()
@@ -44,13 +47,16 @@ export default function AssetsPage() {
   const [formOpen, setFormOpen] = useState(false)
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Asset | null>(null)
-  const [categoryTab, setCategoryTab] = useState<"all" | AssetCategory>("all")
+  const [kindTab, setKindTab] = useState<"all" | AssetCategoryKind>("all")
 
   const filteredAssets = useMemo(() => {
     if (!assets) return []
-    if (categoryTab === "all") return assets
-    return assets.filter((a) => a.category === categoryTab)
-  }, [assets, categoryTab])
+    if (kindTab === "all") return assets
+    return assets.filter((a) => {
+      const cat = categoryMap.get(a.assetCategoryId)
+      return cat?.kind === kindTab
+    })
+  }, [assets, kindTab, categoryMap])
 
   const totalValue = useMemo(
     () => (assets ?? []).reduce((sum, a) => sum + a.currentValue, 0),
@@ -193,8 +199,8 @@ export default function AssetsPage() {
         {/* 자산 목록 */}
         <div className="lg:col-span-2 space-y-4">
           <Tabs
-            value={categoryTab}
-            onValueChange={(v) => setCategoryTab(v as typeof categoryTab)}
+            value={kindTab}
+            onValueChange={(v) => setKindTab(v as typeof kindTab)}
           >
             <TabsList>
               <TabsTrigger value="all">전체</TabsTrigger>
@@ -202,7 +208,7 @@ export default function AssetsPage() {
               <TabsTrigger value="non_financial">비금융자산</TabsTrigger>
             </TabsList>
 
-            <TabsContent value={categoryTab} className="mt-4">
+            <TabsContent value={kindTab} className="mt-4">
               {isLoading ? (
                 <div className="space-y-3">
                   {Array.from({ length: 3 }).map((_, i) => (
@@ -236,7 +242,11 @@ export default function AssetsPage() {
                               {asset.name}
                             </Link>
                             <Badge variant="outline" className="ml-auto shrink-0">
-                              {ASSET_TYPE_LABELS[asset.type]}
+                              {(() => {
+                                const cat = categoryMap.get(asset.assetCategoryId)
+                                if (!cat) return "미분류"
+                                return cat.icon ? `${cat.icon} ${cat.name}` : cat.name
+                              })()}
                             </Badge>
                           </CardTitle>
                         </CardHeader>

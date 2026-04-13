@@ -9,11 +9,8 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ValuationChart } from "@/components/assets/ValuationChart"
 import { ValuationForm } from "@/components/assets/ValuationForm"
-import {
-  ASSET_TYPE_LABELS,
-  ASSET_CATEGORY_LABELS,
-} from "@/components/assets/AssetFormDialog"
 import { useAssetDetail, useCreateValuation } from "@/hooks/use-assets"
+import { useAssetCategories } from "@/hooks/use-asset-categories"
 import { useAccounts } from "@/hooks/use-accounts"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import type { CreateValuationInput } from "@/lib/validators/asset"
@@ -32,6 +29,7 @@ interface AssetDetailPageProps {
 export default function AssetDetailPage({ params }: AssetDetailPageProps) {
   const { id } = use(params)
   const { data: asset, isLoading } = useAssetDetail(id)
+  const { data: assetCategories } = useAssetCategories()
   const { data: accounts } = useAccounts()
   const createValuation = useCreateValuation()
 
@@ -85,9 +83,12 @@ export default function AssetDetailPage({ params }: AssetDetailPageProps) {
           <h1 className="text-2xl font-semibold truncate">{asset.name}</h1>
           <div className="flex items-center gap-2 mt-1">
             <Badge variant="outline">
-              {ASSET_CATEGORY_LABELS[asset.category]}
+              {(() => {
+                const cat = assetCategories?.find((c) => c.id === asset.assetCategoryId)
+                if (!cat) return "미분류"
+                return cat.icon ? `${cat.icon} ${cat.name}` : cat.name
+              })()}
             </Badge>
-            <Badge variant="outline">{ASSET_TYPE_LABELS[asset.type]}</Badge>
             {asset.institution && (
               <span className="text-sm text-muted-foreground">
                 {asset.institution}

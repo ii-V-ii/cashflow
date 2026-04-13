@@ -17,6 +17,8 @@ import {
   SelectTrigger,
   SelectValue,
   SelectContent,
+  SelectGroup,
+  SelectLabel,
   SelectItem,
 } from "@/components/ui/select"
 import {
@@ -25,26 +27,7 @@ import {
   type CreateAssetFormInput,
 } from "@/lib/validators/asset"
 import { useAssetCategories } from "@/hooks/use-asset-categories"
-import type { Asset, AssetType, AssetCategory } from "@/types"
-
-export const ASSET_TYPE_LABELS: Record<AssetType, string> = {
-  real_estate: "부동산",
-  vehicle: "차량",
-  stock: "주식",
-  fund: "펀드",
-  deposit: "예금",
-  savings: "적금",
-  bond: "채권",
-  crypto: "암호화폐",
-  insurance: "보험",
-  pension: "연금",
-  other: "기타",
-}
-
-export const ASSET_CATEGORY_LABELS: Record<AssetCategory, string> = {
-  financial: "금융자산",
-  non_financial: "비금융자산",
-}
+import type { Asset } from "@/types"
 
 interface AssetFormDialogProps {
   open: boolean
@@ -72,9 +55,7 @@ export function AssetFormDialog({
     resolver: zodResolver(createAssetSchema),
     defaultValues: {
       name: "",
-      type: "stock",
-      category: "financial",
-      assetCategoryId: null,
+      assetCategoryId: "",
       acquisitionDate: new Date().toISOString().slice(0, 10),
       acquisitionCost: 0,
       currentValue: 0,
@@ -92,8 +73,6 @@ export function AssetFormDialog({
         asset
           ? {
               name: asset.name,
-              type: asset.type,
-              category: asset.category,
               assetCategoryId: asset.assetCategoryId,
               acquisitionDate: asset.acquisitionDate,
               acquisitionCost: asset.acquisitionCost,
@@ -106,9 +85,7 @@ export function AssetFormDialog({
             }
           : {
               name: "",
-              type: "stock",
-              category: "financial",
-              assetCategoryId: null,
+              assetCategoryId: "",
               acquisitionDate: new Date().toISOString().slice(0, 10),
               acquisitionCost: 0,
               currentValue: 0,
@@ -146,86 +123,24 @@ export function AssetFormDialog({
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium">분류</label>
-              <Controller
-                name="category"
-                control={control}
-                render={({ field }) => (
+          <div className="flex flex-col gap-2">
+            <label className="text-sm font-medium">자산 카테고리</label>
+            <Controller
+              name="assetCategoryId"
+              control={control}
+              render={({ field }) => {
+                const financialCategories = (assetCategoriesData ?? []).filter(
+                  (c) => c.kind === "financial",
+                )
+                const nonFinancialCategories = (assetCategoriesData ?? []).filter(
+                  (c) => c.kind === "non_financial",
+                )
+                return (
                   <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue>
-                        {(value: AssetCategory) =>
-                          ASSET_CATEGORY_LABELS[value] ?? "선택"
-                        }
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(
-                        Object.entries(ASSET_CATEGORY_LABELS) as [
-                          AssetCategory,
-                          string,
-                        ][]
-                      ).map(([value, label]) => (
-                        <SelectItem key={value} value={value}>
-                          {label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              />
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium">유형</label>
-              <Controller
-                name="type"
-                control={control}
-                render={({ field }) => (
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue>
-                        {(value: AssetType) =>
-                          ASSET_TYPE_LABELS[value] ?? "선택"
-                        }
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(
-                        Object.entries(ASSET_TYPE_LABELS) as [
-                          AssetType,
-                          string,
-                        ][]
-                      ).map(([value, label]) => (
-                        <SelectItem key={value} value={value}>
-                          {label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              />
-            </div>
-          </div>
-
-          {assetCategoriesData && assetCategoriesData.length > 0 && (
-            <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium">자산 카테고리</label>
-              <Controller
-                name="assetCategoryId"
-                control={control}
-                render={({ field }) => (
-                  <Select
-                    value={field.value ?? "none"}
-                    onValueChange={(v) => field.onChange(v === "none" ? null : v)}
-                  >
                     <SelectTrigger className="w-full">
                       <SelectValue placeholder="선택하세요">
                         {(value: string) => {
-                          if (value === "none") return "미분류"
-                          const ac = assetCategoriesData.find(
+                          const ac = (assetCategoriesData ?? []).find(
                             (c) => c.id === value,
                           )
                           if (!ac) return "선택하세요"
@@ -234,18 +149,37 @@ export function AssetFormDialog({
                       </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">미분류</SelectItem>
-                      {assetCategoriesData.map((ac) => (
-                        <SelectItem key={ac.id} value={ac.id}>
-                          {ac.icon ? `${ac.icon} ${ac.name}` : ac.name}
-                        </SelectItem>
-                      ))}
+                      {financialCategories.length > 0 && (
+                        <SelectGroup>
+                          <SelectLabel>금융자산</SelectLabel>
+                          {financialCategories.map((ac) => (
+                            <SelectItem key={ac.id} value={ac.id}>
+                              {ac.icon ? `${ac.icon} ${ac.name}` : ac.name}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      )}
+                      {nonFinancialCategories.length > 0 && (
+                        <SelectGroup>
+                          <SelectLabel>비금융자산</SelectLabel>
+                          {nonFinancialCategories.map((ac) => (
+                            <SelectItem key={ac.id} value={ac.id}>
+                              {ac.icon ? `${ac.icon} ${ac.name}` : ac.name}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      )}
                     </SelectContent>
                   </Select>
-                )}
-              />
-            </div>
-          )}
+                )
+              }}
+            />
+            {errors.assetCategoryId && (
+              <p className="text-xs text-destructive">
+                {errors.assetCategoryId.message}
+              </p>
+            )}
+          </div>
 
           <div className="flex flex-col gap-2">
             <label htmlFor="asset-acq-date" className="text-sm font-medium">

@@ -1,8 +1,8 @@
 import {
   findAllAssets,
   findAssetById,
-  findAssetsByType,
-  findAssetsByCategory,
+  findAssetsByAssetCategoryKind,
+  findAllAssetCategories,
   createAsset,
   updateAsset,
   deleteAsset,
@@ -18,16 +18,12 @@ import {
 import type { ApiResponse, PortfolioSummary, PortfolioGroup, AssetWithValuations } from '@/types'
 
 export async function getAssetsService(params?: {
-  type?: string
-  category?: string
+  kind?: string
   activeOnly?: boolean
 }): Promise<ApiResponse<Awaited<ReturnType<typeof findAllAssets>>>> {
-  if (params?.type) {
-    return successResponse(await findAssetsByType(params.type))
-  }
-  if (params?.category) {
-    const cat = params.category as 'financial' | 'non_financial'
-    return successResponse(await findAssetsByCategory(cat))
+  if (params?.kind) {
+    const k = params.kind as 'financial' | 'non_financial'
+    return successResponse(await findAssetsByAssetCategoryKind(k))
   }
   return successResponse(await findAllAssets(params?.activeOnly ?? true))
 }
@@ -115,34 +111,67 @@ export async function getValuationsService(
 
 export async function getPortfolioSummaryService(): Promise<ApiResponse<PortfolioSummary>> {
   const allAssets = await findAllAssets(true)
+  const allCategories = await findAllAssetCategories()
+
+  const categoryMap = new Map(allCategories.map(c => [c.id, c]))
 
   const totalAssetValue = allAssets.reduce((sum, a) => sum + a.currentValue, 0)
   const totalAcquisitionCost = allAssets.reduce((sum, a) => sum + a.acquisitionCost, 0)
   const totalGain = totalAssetValue - totalAcquisitionCost
   const totalReturnRate = calculateSimpleReturn(totalAssetValue, totalAcquisitionCost)
 
-  const typeGroups = groupAssets(allAssets, 'type', totalAssetValue)
-  const categoryGroups = groupAssets(allAssets, 'category', totalAssetValue)
+  // kind별 그룹 (financial / non_financial)
+  const kindGroups = groupAssetsByKind(allAssets, categoryMap, totalAssetValue)
+  // 자산 카테고리별 그룹 (금융자산, 부동산, 차량, ...)
+  const assetCategoryGroups = groupAssetsByCategory(allAssets, categoryMap, totalAssetValue)
 
   return successResponse({
     totalAssetValue,
     totalAcquisitionCost,
     totalGain,
     totalReturnRate: Math.round(totalReturnRate * 100) / 100,
-    byType: typeGroups,
-    byCategory: categoryGroups,
+    byKind: kindGroups,
+    byAssetCategory: assetCategoryGroups,
   })
 }
 
-function groupAssets(
+function groupAssetsByKind(
   assetList: Awaited<ReturnType<typeof findAllAssets>>,
-  key: 'type' | 'category',
+  categoryMap: Map<string, { kind: string; name: string }>,
   totalValue: number,
 ): readonly PortfolioGroup[] {
   const groups = new Map<string, { value: number; count: number }>()
 
   for (const asset of assetList) {
-    const label = asset[key]
+    const category = categoryMap.get(asset.assetCategoryId)
+    const kind = category?.kind ?? 'financial'
+    const existing = groups.get(kind) ?? { value: 0, count: 0 }
+    groups.set(kind, {
+      value: existing.value + asset.currentValue,
+      count: existing.count + 1,
+    })
+  }
+
+  return Array.from(groups.entries())
+    .map(([label, { value, count }]) => ({
+      label,
+      value,
+      ratio: Math.round(calculatePortfolioWeight(value, totalValue) * 100) / 100,
+      count,
+    }))
+    .sort((a, b) => b.value - a.value)
+}
+
+function groupAssetsByCategory(
+  assetList: Awaited<ReturnType<typeof findAllAssets>>,
+  categoryMap: Map<string, { kind: string; name: string }>,
+  totalValue: number,
+): readonly PortfolioGroup[] {
+  const groups = new Map<string, { value: number; count: number }>()
+
+  for (const asset of assetList) {
+    const category = categoryMap.get(asset.assetCategoryId)
+    const label = category?.name ?? '미분류'
     const existing = groups.get(label) ?? { value: 0, count: 0 }
     groups.set(label, {
       value: existing.value + asset.currentValue,

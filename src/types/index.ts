@@ -63,9 +63,12 @@ export interface CategoryWithChildren extends Category {
 
 // === Asset Category (Custom) ===
 
+export type AssetCategoryKind = 'financial' | 'non_financial'
+
 export interface AssetCategoryCustom {
   readonly id: string
   readonly name: string
+  readonly kind: AssetCategoryKind
   readonly icon: string | null
   readonly color: string | null
   readonly sortOrder: number
@@ -255,18 +258,10 @@ export interface NetWorthPoint {
 
 // === Asset ===
 
-export type AssetType =
-  | 'real_estate' | 'vehicle' | 'stock' | 'fund' | 'deposit'
-  | 'savings' | 'bond' | 'crypto' | 'insurance' | 'pension' | 'other'
-
-export type AssetCategory = 'financial' | 'non_financial'
-
 export interface Asset {
   readonly id: string
   readonly name: string
-  readonly type: AssetType
-  readonly category: AssetCategory
-  readonly assetCategoryId: string | null
+  readonly assetCategoryId: string
   readonly acquisitionDate: string // YYYY-MM-DD
   readonly acquisitionCost: number // KRW 정수
   readonly currentValue: number // KRW 정수
@@ -314,8 +309,8 @@ export interface PortfolioSummary {
   readonly totalAcquisitionCost: number // 총 취득원가
   readonly totalGain: number // 총 평가손익
   readonly totalReturnRate: number // 전체 수익률 (%)
-  readonly byType: readonly PortfolioGroup[]
-  readonly byCategory: readonly PortfolioGroup[]
+  readonly byKind: readonly PortfolioGroup[]
+  readonly byAssetCategory: readonly PortfolioGroup[]
 }
 
 export interface PortfolioGroup {

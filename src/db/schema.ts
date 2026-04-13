@@ -159,6 +159,7 @@ export const assetCategories = pgTable(
   {
     id: text('id').primaryKey(),
     name: text('name').notNull(),
+    kind: text('kind', { enum: ['financial', 'non_financial'] }).notNull(),
     icon: text('icon'),
     color: text('color'),
     sortOrder: integer('sort_order').notNull().default(0),
@@ -174,16 +175,7 @@ export const assets = pgTable(
   {
     id: text('id').primaryKey(),
     name: text('name').notNull(),
-    type: text('type', {
-      enum: [
-        'real_estate', 'vehicle', 'stock', 'fund', 'deposit',
-        'savings', 'bond', 'crypto', 'insurance', 'pension', 'other',
-      ],
-    }).notNull(),
-    category: text('category', {
-      enum: ['financial', 'non_financial'],
-    }).notNull(),
-    assetCategoryId: text('asset_category_id').references(() => assetCategories.id),
+    assetCategoryId: text('asset_category_id').notNull().references(() => assetCategories.id),
     acquisitionDate: date('acquisition_date').notNull(),
     acquisitionCost: integer('acquisition_cost').notNull(),
     currentValue: integer('current_value').notNull(),
@@ -196,8 +188,6 @@ export const assets = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (table) => [
-    index('idx_assets_type').on(table.type),
-    index('idx_assets_category').on(table.category),
     index('idx_assets_asset_category_id').on(table.assetCategoryId),
     index('idx_assets_account_id').on(table.accountId),
     index('idx_assets_is_active').on(table.isActive),

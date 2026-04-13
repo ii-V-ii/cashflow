@@ -31,7 +31,7 @@ export function PortfolioDonut() {
 
   const chartData = useMemo(
     () =>
-      data?.byType.map((group, i) => ({
+      data?.byAssetCategory.map((group, i) => ({
         name: group.label,
         value: group.value,
         color: COLORS[i % COLORS.length],

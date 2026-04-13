@@ -1,21 +1,16 @@
-import { findAllAssets } from '@/db/repositories'
+import { findAllAssets, findAllAssetCategories } from '@/db/repositories'
 import type { ForecastAssumptions, AssetProjection } from '@/types'
 
 /**
- * 자산 유형별 기본 성장률 (연간 %)
+ * 자산 카테고리별 기본 성장률 (연간 %)
+ * 카테고리 이름 기반으로 매핑
  */
 const DEFAULT_GROWTH_RATES: Record<string, number> = {
-  real_estate: 3,
-  vehicle: -10,
-  stock: 7,
-  fund: 5,
-  deposit: 3,
-  savings: 3,
-  bond: 4,
-  crypto: 0,
-  insurance: 2,
-  pension: 4,
-  other: 0,
+  '금융자산': 5,
+  '부동산': 3,
+  '차량': -10,
+  '보험/연금': 3,
+  '기타': 0,
 }
 
 /**
@@ -32,12 +27,13 @@ export function compoundGrowth(
 
 /**
  * 자산 목록으로부터 투영 계산 (순수 함수 - DB 호출 없음)
- * M-10: 루프 밖에서 자산을 한번 조회 후 이 함수에 전달
+ * categoryMap: assetCategoryId -> 카테고리 이름
  */
 export function projectAssetsFromList(
-  activeAssets: readonly { id: string; name: string; currentValue: number; type: string }[],
+  activeAssets: readonly { id: string; name: string; currentValue: number; assetCategoryId: string }[],
   months: number,
   assumptions: ForecastAssumptions | null,
+  categoryMap: ReadonlyMap<string, string>,
 ): {
   totalProjectedValue: number
   projections: readonly AssetProjection[]
@@ -45,7 +41,8 @@ export function projectAssetsFromList(
   const customRates = assumptions?.assetGrowthRates ?? {}
 
   const projections: AssetProjection[] = activeAssets.map((asset) => {
-    const growthRate = customRates[asset.type] ?? DEFAULT_GROWTH_RATES[asset.type] ?? 0
+    const categoryName = categoryMap.get(asset.assetCategoryId) ?? '기타'
+    const growthRate = customRates[asset.assetCategoryId] ?? DEFAULT_GROWTH_RATES[categoryName] ?? 0
     const projectedValue = compoundGrowth(asset.currentValue, growthRate, months)
 
     return {
@@ -72,7 +69,9 @@ export async function projectAssets(
   projections: readonly AssetProjection[]
 }> {
   const activeAssets = await findAllAssets(true)
-  return projectAssetsFromList(activeAssets, months, assumptions)
+  const allCategories = await findAllAssetCategories()
+  const categoryMap = new Map(allCategories.map(c => [c.id, c.name]))
+  return projectAssetsFromList(activeAssets, months, assumptions, categoryMap)
 }
 
 /**

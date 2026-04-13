@@ -27,7 +27,7 @@ export function AssetWidget() {
 
   const miniChartData = useMemo(
     () =>
-      portfolio?.byType.map((group, i) => ({
+      portfolio?.byAssetCategory.map((group, i) => ({
         name: group.label,
         value: group.value,
         color: COLORS[i % COLORS.length],
