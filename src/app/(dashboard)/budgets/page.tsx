@@ -18,7 +18,6 @@ import {
 } from "@/hooks/use-budget"
 import { useGroupedCategories } from "@/hooks/use-categories"
 import { formatCurrency } from "@/lib/utils"
-import { BudgetComparison } from "@/components/budget/BudgetComparison"
 import { BudgetSummaryBar } from "@/components/budget/BudgetSummaryBar"
 import { AnnualOverview } from "@/components/budget/AnnualOverview"
 import { AnnualBudgetGrid } from "@/components/budget/AnnualBudgetGrid"
@@ -286,9 +285,6 @@ export default function BudgetsPage() {
                   total={totalExpense}
                   colorClass="text-rose-600"
                 />
-                {budgetDetail && budgetDetail.items.length > 0 && (
-                  <BudgetComparison items={budgetDetail.items} />
-                )}
               </TabsContent>
               <TabsContent value="income" className="mt-3 space-y-4">
                 <BudgetCategorySection

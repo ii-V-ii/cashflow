@@ -92,7 +92,7 @@ async function getCategoryTotalsForMonth(datePrefix: string): Promise<CategoryTo
     LEFT JOIN categories pc ON c.parent_id = pc.id
     WHERE t.date LIKE ${datePrefix + '%'}
       AND t.type IN ('income', 'expense')
-    GROUP BY COALESCE(c.parent_id, c.id), t.type
+    GROUP BY COALESCE(c.parent_id, c.id), COALESCE(pc.name, c.name, '미분류'), t.type
   `) as unknown as Array<{ category_id: string | null; category_name: string; type: string; amount: number }>
 
   return rows.map((row) => ({
@@ -117,7 +117,7 @@ async function getCategoryTotalsForYear(yearPrefix: string): Promise<CategoryTot
     LEFT JOIN categories pc ON c.parent_id = pc.id
     WHERE substr(t.date, 1, 4) = ${yearPrefix}
       AND t.type IN ('income', 'expense')
-    GROUP BY COALESCE(c.parent_id, c.id), t.type
+    GROUP BY COALESCE(c.parent_id, c.id), COALESCE(pc.name, c.name, '미분류'), t.type
   `) as unknown as Array<{ category_id: string | null; category_name: string; type: string; amount: number }>
 
   return rows.map((row) => ({

@@ -78,7 +78,7 @@ export async function getCategoryAnalysis(
     LEFT JOIN categories pc ON c.parent_id = pc.id
     WHERE t.date LIKE ${datePrefix + '%'}
       AND t.type = 'expense'
-    GROUP BY COALESCE(c.parent_id, c.id)
+    GROUP BY COALESCE(c.parent_id, c.id), COALESCE(pc.name, c.name, '미분류')
     ORDER BY SUM(t.amount) DESC
   `) as unknown as Array<{ category_id: string | null; category_name: string; amount: number }>
 

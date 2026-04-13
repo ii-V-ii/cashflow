@@ -10,7 +10,9 @@ import {
 import { Card, CardHeader, CardDescription, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useMonthlySettlement } from "@/hooks/use-settlement"
+import { useBudgets, useBudgetDetail } from "@/hooks/use-budget"
 import { formatCurrency } from "@/lib/utils"
+import { BudgetComparison } from "@/components/budget/BudgetComparison"
 import { CategoryPieChart } from "./CategoryPieChart"
 import { AccountChangesTable } from "./AccountChangesTable"
 
@@ -24,6 +26,9 @@ export function MonthlySettlementView({
   month,
 }: MonthlySettlementViewProps) {
   const { data, isLoading } = useMonthlySettlement(year, month)
+  const { data: budgets } = useBudgets(year)
+  const currentBudget = budgets?.find((b) => b.month === month) ?? null
+  const { data: budgetDetail } = useBudgetDetail(currentBudget?.id ?? null)
 
   if (isLoading) {
     return (
@@ -94,6 +99,11 @@ export function MonthlySettlementView({
           colorClass="text-rose-600"
         />
       </div>
+
+      {/* 예산 vs 실적 비교 차트 */}
+      {budgetDetail && budgetDetail.items.length > 0 && (
+        <BudgetComparison items={budgetDetail.items} />
+      )}
 
       {/* 계좌별 변동 */}
       <AccountChangesTable data={data.accountChanges} />
