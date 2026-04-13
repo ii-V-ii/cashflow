@@ -135,9 +135,18 @@ export function RecurringList() {
     return { active, inactive }
   }, [items])
 
-  function formatFrequency(frequency: string, interval: number): string {
-    const label = FREQUENCY_LABELS[frequency] ?? frequency
-    return interval === 1 ? label : `${label} ${interval}회`
+  function formatFrequency(item: RecurringTransaction): string {
+    const label = FREQUENCY_LABELS[item.frequency] ?? item.frequency
+    if (item.frequency === "yearly" && item.startDate) {
+      const mon = parseInt(item.startDate.slice(5, 7), 10)
+      const day = parseInt(item.startDate.slice(8, 10), 10)
+      return `${label} ${mon}월 ${day}일`
+    }
+    if (item.frequency === "monthly" && item.startDate) {
+      const day = parseInt(item.startDate.slice(8, 10), 10)
+      return `${label} ${day}일`
+    }
+    return item.interval === 1 ? label : `${label} ${item.interval}회`
   }
 
   if (isLoading) {
@@ -236,7 +245,7 @@ interface RecurringCardProps {
   item: RecurringTransaction
   getCategoryName: (id: string | null) => string
   getAccountName: (id: string) => string
-  formatFrequency: (frequency: string, interval: number) => string
+  formatFrequency: (item: RecurringTransaction) => string
   onEdit: (item: RecurringTransaction) => void
   onToggle: (item: RecurringTransaction) => void
   onDelete: (id: string) => void
@@ -266,7 +275,7 @@ function RecurringCard({
             <span className="font-medium truncate">{item.description}</span>
           </div>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs text-muted-foreground">
-            <span>{formatFrequency(item.frequency, item.interval)}</span>
+            <span>{formatFrequency(item)}</span>
             <span>{getCategoryName(item.categoryId)}</span>
             <span>{getAccountName(item.accountId)}</span>
             <span>다음: {item.nextDate}</span>

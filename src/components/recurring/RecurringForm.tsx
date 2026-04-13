@@ -29,6 +29,8 @@ const formSchema = z.object({
   toAccountId: z.string().optional(),
   frequency: z.enum(["daily", "weekly", "monthly", "yearly"]),
   interval: z.number().int().min(1).max(365),
+  monthOfYear: z.number().int().min(1).max(12).optional(),
+  dayOfMonth: z.number().int().min(1).max(31).optional(),
   startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().or(z.literal("")),
 })
@@ -81,11 +83,14 @@ export function RecurringForm({
   })
 
   const currentType = form.watch("type")
+  const currentFrequency = form.watch("frequency")
   const isEditing = item !== null
 
   useEffect(() => {
     if (open) {
       if (item) {
+        const day = item.startDate ? parseInt(item.startDate.slice(8, 10), 10) : undefined
+        const mon = item.startDate ? parseInt(item.startDate.slice(5, 7), 10) : undefined
         form.reset({
           type: item.type,
           amount: item.amount,
@@ -95,10 +100,13 @@ export function RecurringForm({
           toAccountId: item.toAccountId ?? undefined,
           frequency: item.frequency,
           interval: item.interval,
+          monthOfYear: mon,
+          dayOfMonth: day,
           startDate: item.startDate,
           endDate: item.endDate ?? "",
         })
       } else {
+        const now = new Date()
         form.reset({
           type: "expense",
           amount: 0,
@@ -106,7 +114,9 @@ export function RecurringForm({
           accountId: "",
           frequency: "monthly",
           interval: 1,
-          startDate: new Date().toISOString().slice(0, 10),
+          monthOfYear: now.getMonth() + 1,
+          dayOfMonth: now.getDate(),
+          startDate: now.toISOString().slice(0, 10),
           endDate: "",
         })
       }
@@ -120,8 +130,20 @@ export function RecurringForm({
   }
 
   function handleFormSubmit(values: FormValues) {
+    let { startDate } = values
+    if (values.frequency === "yearly" && values.monthOfYear && values.dayOfMonth) {
+      const d = new Date(startDate + "T00:00:00")
+      d.setMonth(values.monthOfYear - 1)
+      d.setDate(values.dayOfMonth)
+      startDate = d.toISOString().slice(0, 10)
+    } else if (values.frequency === "monthly" && values.dayOfMonth) {
+      const d = new Date(startDate + "T00:00:00")
+      d.setDate(values.dayOfMonth)
+      startDate = d.toISOString().slice(0, 10)
+    }
     onSubmit({
       ...values,
+      startDate,
       categoryId: values.categoryId || null,
       toAccountId: values.toAccountId || null,
       endDate: values.endDate || null,
@@ -257,8 +279,8 @@ export function RecurringForm({
                   </div>
                 )}
 
-                {/* 빈도 + 간격 */}
-                <div className="grid grid-cols-2 gap-3">
+                {/* 빈도 + 간격 + 실행일 */}
+                <div className={`grid gap-3 ${currentFrequency === "yearly" ? "grid-cols-3" : "grid-cols-2"}`}>
                   <div>
                     <label className="text-xs font-medium text-muted-foreground">
                       반복 주기
@@ -279,17 +301,52 @@ export function RecurringForm({
                       ))}
                     </select>
                   </div>
-                  <div>
-                    <label className="text-xs font-medium text-muted-foreground">
-                      간격
-                    </label>
-                    <Input
-                      type="number"
-                      min={1}
-                      max={365}
-                      {...form.register("interval", { valueAsNumber: true })}
-                    />
-                  </div>
+                  {currentFrequency === "yearly" && (
+                    <div>
+                      <label className="text-xs font-medium text-muted-foreground">
+                        실행월
+                      </label>
+                      <select
+                        className={selectClass}
+                        {...form.register("monthOfYear", { valueAsNumber: true })}
+                      >
+                        {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                          <option key={m} value={m}>
+                            {m}월
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  {(currentFrequency === "monthly" || currentFrequency === "yearly") ? (
+                    <div>
+                      <label className="text-xs font-medium text-muted-foreground">
+                        실행일
+                      </label>
+                      <select
+                        className={selectClass}
+                        {...form.register("dayOfMonth", { valueAsNumber: true })}
+                      >
+                        {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+                          <option key={d} value={d}>
+                            {d}일
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="text-xs font-medium text-muted-foreground">
+                        간격
+                      </label>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={365}
+                        {...form.register("interval", { valueAsNumber: true })}
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {/* 시작/종료일 */}
