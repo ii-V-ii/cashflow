@@ -109,6 +109,7 @@ export interface BudgetItem {
 export interface BudgetItemWithActual extends BudgetItem {
   readonly categoryName: string
   readonly categoryType: CategoryType
+  readonly categoryParentId: string | null
   readonly actualAmount: number // 실적
   readonly difference: number // planned - actual
   readonly achievementRate: number // (actual / planned) * 100
