@@ -415,6 +415,29 @@ export interface ForecastSummary {
   readonly results: readonly ForecastResult[]
 }
 
+// === Annual Grid ===
+
+export interface AnnualGridCategory {
+  readonly id: string
+  readonly name: string
+  readonly icon: string | null
+  readonly months: Record<number, number> // 1-12
+  readonly total: number
+}
+
+export interface AnnualGridGroup {
+  readonly parent: { readonly id: string; readonly name: string; readonly icon: string | null }
+  readonly categories: readonly AnnualGridCategory[]
+  readonly monthlyTotals: Record<number, number>
+  readonly total: number
+}
+
+export interface AnnualGridData {
+  readonly groups: readonly AnnualGridGroup[]
+  readonly monthlyTotals: Record<number, number>
+  readonly grandTotal: number
+}
+
 // === Filters ===
 
 export interface DateRange {

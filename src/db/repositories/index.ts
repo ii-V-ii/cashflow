@@ -47,6 +47,8 @@ export {
   getBudgetItemsWithActuals,
   getActualsByYearMonth,
   getMonthlyActuals,
+  findBudgetsWithItemsByYear,
+  upsertBudgetItem,
 } from './budget-repository'
 
 export {

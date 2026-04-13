@@ -27,6 +27,8 @@ export {
   type UpdateBudgetInput,
   type CopyBudgetInput,
   type BudgetItemInput,
+  updateAnnualGridCellSchema,
+  type UpdateAnnualGridCellInput,
 } from './budget'
 
 export {

@@ -31,6 +31,15 @@ export const copyBudgetSchema = z.object({
   targetMonth: z.number().int().min(1).max(12),
 })
 
+export const updateAnnualGridCellSchema = z.object({
+  year: z.number().int().min(2000).max(2100),
+  month: z.number().int().min(1).max(12),
+  categoryId: z.string().min(1),
+  amount: z.number().int().min(0),
+})
+
+export type UpdateAnnualGridCellInput = z.infer<typeof updateAnnualGridCellSchema>
+
 export type CreateBudgetInput = z.infer<typeof createBudgetSchema>
 export type UpdateBudgetInput = z.infer<typeof updateBudgetSchema>
 export type CopyBudgetInput = z.infer<typeof copyBudgetSchema>

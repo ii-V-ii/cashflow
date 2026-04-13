@@ -7,14 +7,19 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-const currencyFormatter = new Intl.NumberFormat("ko-KR", {
-  style: "currency",
-  currency: "KRW",
+const numberFormatter = new Intl.NumberFormat("ko-KR", {
   maximumFractionDigits: 0,
 })
 
+/** Returns formatted currency without sign. Uses absolute value (use color for negative). */
 export function formatCurrency(amount: number): string {
-  return currencyFormatter.format(amount)
+  const abs = Math.abs(amount)
+  return numberFormatter.format(abs)
+}
+
+/** Returns formatted number only (no sign). Alias for formatCurrency. */
+export function formatNumber(amount: number): string {
+  return numberFormatter.format(Math.abs(amount))
 }
 
 export function formatDate(

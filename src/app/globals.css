@@ -128,3 +128,8 @@
     @apply font-sans;
   }
 }
+
+/* ₩ symbol in monospace contexts: use sans font and slightly smaller size */
+.font-mono {
+  font-variant-numeric: tabular-nums;
+}

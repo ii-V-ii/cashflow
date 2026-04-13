@@ -1,7 +1,12 @@
 "use client"
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import type { Budget, BudgetWithItems, AnnualBudgetSummary } from "@/types"
+import type {
+  Budget,
+  BudgetWithItems,
+  AnnualBudgetSummary,
+  AnnualGridData,
+} from "@/types"
 import type {
   CreateBudgetInput,
   UpdateBudgetInput,
@@ -81,4 +86,117 @@ export function useCopyBudget() {
       queryClient.invalidateQueries({ queryKey: ["dashboard"] })
     },
   })
+}
+
+// === Annual Grid ===
+
+export function useAnnualGrid(year: number, type: "income" | "expense") {
+  return useQuery({
+    queryKey: [...BUDGETS_KEY, "annual-grid", year, type],
+    queryFn: () =>
+      apiGet<AnnualGridData>(
+        `/api/budget/annual-grid?year=${year}&type=${type}`,
+      ),
+  })
+}
+
+interface UpdateGridCellVars {
+  year: number
+  month: number
+  categoryId: string
+  amount: number
+  type: "income" | "expense"
+}
+
+export function useUpdateGridCell() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (vars: UpdateGridCellVars) =>
+      apiPut<void>("/api/budget/annual-grid", {
+        year: vars.year,
+        month: vars.month,
+        categoryId: vars.categoryId,
+        amount: vars.amount,
+      }),
+    onMutate: async (variables) => {
+      const { year, type, categoryId, month, amount } = variables
+      const queryKey = [...BUDGETS_KEY, "annual-grid", year, type]
+
+      await queryClient.cancelQueries({ queryKey })
+      const previous = queryClient.getQueryData<AnnualGridData>(queryKey)
+
+      if (previous) {
+        const diff = (oldAmount: number) => amount - oldAmount
+
+        queryClient.setQueryData<AnnualGridData>(queryKey, {
+          ...previous,
+          groups: previous.groups.map((group) => {
+            const catIndex = group.categories.findIndex(
+              (c) => c.id === categoryId,
+            )
+            if (catIndex === -1) return group
+
+            const cat = group.categories[catIndex]
+            const oldAmount = cat.months[month] ?? 0
+            const d = diff(oldAmount)
+
+            const newCatMonths = { ...cat.months, [month]: amount }
+            const newCat = {
+              ...cat,
+              months: newCatMonths,
+              total: cat.total + d,
+            }
+            const newCategories = group.categories.map((c, i) =>
+              i === catIndex ? newCat : c,
+            )
+            const newGroupMonthlyTotals = {
+              ...group.monthlyTotals,
+              [month]: (group.monthlyTotals[month] ?? 0) + d,
+            }
+
+            return {
+              ...group,
+              categories: newCategories,
+              monthlyTotals: newGroupMonthlyTotals,
+              total: group.total + d,
+            }
+          }),
+          monthlyTotals: {
+            ...previous.monthlyTotals,
+            [month]:
+              (previous.monthlyTotals[month] ?? 0) +
+              amount -
+              (findCategoryAmount(previous, categoryId, month) ?? 0),
+          },
+          grandTotal:
+            previous.grandTotal +
+            amount -
+            (findCategoryAmount(previous, categoryId, month) ?? 0),
+        })
+      }
+
+      return { previous, queryKey }
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(context.queryKey, context.previous)
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: BUDGETS_KEY })
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] })
+    },
+  })
+}
+
+function findCategoryAmount(
+  data: AnnualGridData,
+  categoryId: string,
+  month: number,
+): number {
+  for (const group of data.groups) {
+    const cat = group.categories.find((c) => c.id === categoryId)
+    if (cat) return cat.months[month] ?? 0
+  }
+  return 0
 }

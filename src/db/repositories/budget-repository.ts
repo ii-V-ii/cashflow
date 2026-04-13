@@ -207,6 +207,108 @@ export async function getBudgetItemsWithActuals(budgetId: string, year: number, 
   })
 }
 
+// === Annual Grid ===
+
+export async function findBudgetsWithItemsByYear(year: number) {
+  const db = getDb()
+
+  const yearBudgets = await db
+    .select()
+    .from(budgets)
+    .where(and(eq(budgets.year, year), sql`${budgets.month} IS NOT NULL`))
+    .orderBy(budgets.month)
+
+  if (yearBudgets.length === 0) {
+    return []
+  }
+
+  const budgetIds = yearBudgets.map((b) => b.id)
+  const allItems = await db
+    .select()
+    .from(budgetItems)
+    .where(sql`${budgetItems.budgetId} IN (${sql.join(budgetIds.map(id => sql`${id}`), sql`, `)})`)
+
+  return yearBudgets.map((b) => ({
+    ...b,
+    items: allItems.filter((item) => item.budgetId === b.id),
+  }))
+}
+
+export async function upsertBudgetItem(
+  year: number,
+  month: number,
+  categoryId: string,
+  amount: number,
+) {
+  const db = getDb()
+  const now = new Date().toISOString()
+
+  let budget = await findBudgetByYearMonth(year, month)
+
+  if (!budget) {
+    const id = generateId()
+    await db.insert(budgets).values({
+      id,
+      name: `${year}년 ${month}월 예산`,
+      year,
+      month,
+      totalIncome: 0,
+      totalExpense: 0,
+      createdAt: now,
+      updatedAt: now,
+    })
+    budget = (await findBudgetById(id))!
+  }
+
+  const existingItems = await db
+    .select()
+    .from(budgetItems)
+    .where(and(eq(budgetItems.budgetId, budget.id), eq(budgetItems.categoryId, categoryId)))
+
+  const existingItem = existingItems[0] ?? null
+
+  if (amount === 0 && existingItem) {
+    await db.delete(budgetItems).where(eq(budgetItems.id, existingItem.id))
+  } else if (amount > 0 && existingItem) {
+    await db
+      .update(budgetItems)
+      .set({ plannedAmount: amount, updatedAt: now })
+      .where(eq(budgetItems.id, existingItem.id))
+  } else if (amount > 0) {
+    await db.insert(budgetItems).values({
+      id: generateId(),
+      budgetId: budget.id,
+      categoryId,
+      plannedAmount: amount,
+      createdAt: now,
+      updatedAt: now,
+    })
+  }
+
+  // totalIncome/totalExpense 재계산
+  const allItems = await getBudgetItems(budget.id)
+  const allCats = await db.select().from(categories)
+  const catMap = new Map(allCats.map((c) => [c.id, c]))
+
+  let totalIncome = 0
+  let totalExpense = 0
+  for (const item of allItems) {
+    const cat = catMap.get(item.categoryId)
+    if (cat?.type === 'income') {
+      totalIncome += item.plannedAmount
+    } else {
+      totalExpense += item.plannedAmount
+    }
+  }
+
+  await db
+    .update(budgets)
+    .set({ totalIncome, totalExpense, updatedAt: now })
+    .where(eq(budgets.id, budget.id))
+
+  return (await findBudgetById(budget.id))!
+}
+
 export async function getMonthlyActuals(year: number) {
   const db = getDb()
 

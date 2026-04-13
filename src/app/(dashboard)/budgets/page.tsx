@@ -14,11 +14,14 @@ import {
   useCreateBudget,
   useUpdateBudget,
   useCopyBudget,
+  useAnnualGrid,
 } from "@/hooks/use-budget"
 import { useGroupedCategories } from "@/hooks/use-categories"
 import { formatCurrency } from "@/lib/utils"
 import { BudgetComparison } from "@/components/budget/BudgetComparison"
+import { BudgetSummaryBar } from "@/components/budget/BudgetSummaryBar"
 import { AnnualOverview } from "@/components/budget/AnnualOverview"
+import { AnnualBudgetGrid } from "@/components/budget/AnnualBudgetGrid"
 import type { Category, CategoryWithChildren, BudgetWithItems } from "@/types"
 
 export default function BudgetsPage() {
@@ -26,18 +29,18 @@ export default function BudgetsPage() {
   const [year, setYear] = useState(now.getFullYear())
   const [month, setMonth] = useState(now.getMonth() + 1)
   const [tab, setTab] = useState("monthly")
+  const [budgetTypeTab, setBudgetTypeTab] = useState("expense")
 
   const { data: budgets, isLoading: budgetsLoading } = useBudgets(year)
   const { data: grouped } = useGroupedCategories()
-  // Flatten to get all leaf categories for budget item mapping
+  // Flatten to get all categories (parents + children) for budget item mapping
   const categories = useMemo(() => {
     if (!grouped) return undefined
     const all: Category[] = []
     for (const parent of grouped) {
+      all.push(parent)
       if (parent.children.length > 0) {
         all.push(...parent.children)
-      } else {
-        all.push(parent)
       }
     }
     return all
@@ -97,15 +100,16 @@ export default function BudgetsPage() {
     [categories],
   )
 
+  // 합계는 대분류(parentId === null)만 합산
   const totalIncome = useMemo(() => {
     let sum = 0
-    for (const cat of incomeLeaves) sum += editItems.get(cat.id) ?? 0
+    for (const g of incomeGroups) sum += editItems.get(g.id) ?? 0
     return sum
-  }, [editItems, incomeLeaves])
+  }, [editItems, incomeGroups])
 
   const totalExpense = useMemo(() => {
     let sum = 0
-    for (const cat of expenseLeaves) sum += editItems.get(cat.id) ?? 0
+    for (const g of expenseGroups) sum += editItems.get(g.id) ?? 0
     return sum
   }, [editItems, expenseLeaves])
 
@@ -200,6 +204,7 @@ export default function BudgetsPage() {
       <Tabs value={tab} onValueChange={(v) => setTab(v as string)}>
         <TabsList>
           <TabsTrigger value="monthly">월별 예산</TabsTrigger>
+          <TabsTrigger value="annual-edit">연간 예산</TabsTrigger>
           <TabsTrigger value="annual">연간 개요</TabsTrigger>
         </TabsList>
 
@@ -255,7 +260,10 @@ export default function BudgetsPage() {
             </div>
           </div>
 
-          {/* 예산 편집 */}
+          {/* 요약 바 */}
+          <BudgetSummaryBar income={totalIncome} expense={totalExpense} />
+
+          {/* 수입/지출 서브탭 */}
           {budgetsLoading || detailLoading ? (
             <div className="space-y-3">
               {Array.from({ length: 5 }, (_, i) => (
@@ -263,47 +271,80 @@ export default function BudgetsPage() {
               ))}
             </div>
           ) : (
-            <div className="space-y-4">
-              <BudgetCategorySection
-                title="수입"
-                groups={incomeGroups}
-                editItems={editItems}
-                budgetDetail={budgetDetail}
-                onAmountChange={handleAmountChange}
-                total={totalIncome}
-                colorClass="text-emerald-600"
-              />
-              <BudgetCategorySection
-                title="지출"
-                groups={expenseGroups}
-                editItems={editItems}
-                budgetDetail={budgetDetail}
-                onAmountChange={handleAmountChange}
-                total={totalExpense}
-                colorClass="text-rose-600"
-              />
-
-              <Card size="sm">
-                <CardContent className="flex items-center justify-between py-2">
-                  <span className="text-sm font-semibold">예산 순수익</span>
-                  <span
-                    className={`text-base font-mono font-semibold ${
-                      totalIncome - totalExpense >= 0
-                        ? "text-emerald-600"
-                        : "text-rose-600"
-                    }`}
-                  >
-                    {formatCurrency(totalIncome - totalExpense)}
-                  </span>
-                </CardContent>
-              </Card>
-            </div>
+            <Tabs value={budgetTypeTab} onValueChange={setBudgetTypeTab}>
+              <TabsList variant="line" className="w-full sm:w-auto">
+                <TabsTrigger value="expense">지출</TabsTrigger>
+                <TabsTrigger value="income">수입</TabsTrigger>
+              </TabsList>
+              <TabsContent value="expense" className="mt-3 space-y-4">
+                <BudgetCategorySection
+                  title="지출"
+                  groups={expenseGroups}
+                  editItems={editItems}
+                  budgetDetail={budgetDetail}
+                  onAmountChange={handleAmountChange}
+                  total={totalExpense}
+                  colorClass="text-rose-600"
+                />
+                {budgetDetail && budgetDetail.items.length > 0 && (
+                  <BudgetComparison items={budgetDetail.items} />
+                )}
+              </TabsContent>
+              <TabsContent value="income" className="mt-3 space-y-4">
+                <BudgetCategorySection
+                  title="수입"
+                  groups={incomeGroups}
+                  editItems={editItems}
+                  budgetDetail={budgetDetail}
+                  onAmountChange={handleAmountChange}
+                  total={totalIncome}
+                  colorClass="text-emerald-600"
+                />
+              </TabsContent>
+            </Tabs>
           )}
+        </TabsContent>
 
-          {/* 비교 차트 */}
-          {budgetDetail && budgetDetail.items.length > 0 && (
-            <BudgetComparison items={budgetDetail.items} />
-          )}
+        <TabsContent value="annual-edit" className="mt-4 space-y-4">
+          {/* 연도 선택 */}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              size="icon-sm"
+              onClick={() => setYear((y) => y - 1)}
+              aria-label="이전 연도"
+            >
+              <ChevronLeft className="size-4" />
+            </Button>
+            <span className="min-w-24 text-center text-sm font-semibold">
+              {year}년 연간
+            </span>
+            <Button
+              variant="outline"
+              size="icon-sm"
+              onClick={() => setYear((y) => y + 1)}
+              aria-label="다음 연도"
+            >
+              <ChevronRight className="size-4" />
+            </Button>
+          </div>
+
+          {/* 요약 바 */}
+          <AnnualGridSummaryBar year={year} />
+
+          {/* 수입/지출 서브탭 */}
+          <Tabs value={budgetTypeTab} onValueChange={setBudgetTypeTab}>
+            <TabsList variant="line" className="w-full sm:w-auto">
+              <TabsTrigger value="expense">지출</TabsTrigger>
+              <TabsTrigger value="income">수입</TabsTrigger>
+            </TabsList>
+            <TabsContent value="expense" className="mt-3">
+              <AnnualBudgetGrid year={year} type="expense" />
+            </TabsContent>
+            <TabsContent value="income" className="mt-3">
+              <AnnualBudgetGrid year={year} type="income" />
+            </TabsContent>
+          </Tabs>
         </TabsContent>
 
         <TabsContent value="annual" className="mt-4">
@@ -371,16 +412,22 @@ function BudgetCategorySection({
       <CardContent className="p-0">
         <div className="divide-y">
           {groups.map((parent) => {
-            const leaves =
-              parent.children.length > 0 ? parent.children : [parent]
-            const groupTotal = leaves.reduce(
-              (sum, c) => sum + (editItems.get(c.id) ?? 0),
-              0,
+            const hasChildren = parent.children.length > 0
+            const parentAmount = editItems.get(parent.id) ?? 0
+            const childrenTotal = hasChildren
+              ? parent.children.reduce(
+                  (sum, c) => sum + (editItems.get(c.id) ?? 0),
+                  0,
+                )
+              : 0
+            const groupTotal = parentAmount + childrenTotal
+            const parentActual = budgetDetail?.items.find(
+              (i) => i.categoryId === parent.id,
             )
 
             return (
               <div key={parent.id}>
-                {/* 대분류 헤더 */}
+                {/* 대분류 행 (편집 가능) */}
                 <div className="flex items-center gap-3 px-4 py-2 bg-muted/40">
                   {parent.icon && (
                     <span className="shrink-0 text-base">{parent.icon}</span>
@@ -388,28 +435,44 @@ function BudgetCategorySection({
                   <span className="flex-1 text-sm font-semibold">
                     {parent.name}
                   </span>
-                  <span className="text-xs font-mono text-muted-foreground">
-                    {formatCurrency(groupTotal)}
-                  </span>
+                  {hasChildren && (
+                    <span className="text-xs font-mono text-muted-foreground">
+                      합계 {formatCurrency(groupTotal)}
+                    </span>
+                  )}
+                  {parentActual && parentActual.actualAmount > 0 && (
+                    <span className="shrink-0 text-xs font-mono text-muted-foreground">
+                      실적 {formatCurrency(parentActual.actualAmount)}
+                    </span>
+                  )}
+                  <Input
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    step={10000}
+                    value={parentAmount || ""}
+                    onChange={(e) => onAmountChange(parent.id, e.target.value)}
+                    placeholder="0"
+                    className="h-8 w-28 shrink-0 text-right font-mono"
+                  />
                 </div>
                 {/* 소분류 입력 */}
-                {leaves.map((cat) => {
+                {parent.children.map((cat) => {
                   const amount = editItems.get(cat.id) ?? 0
                   const actual = budgetDetail?.items.find(
                     (i) => i.categoryId === cat.id,
                   )
-                  const isChild = cat.id !== parent.id
 
                   return (
                     <div
                       key={cat.id}
                       className="flex items-center gap-3 px-4 py-2.5 pl-10"
                     >
-                      {cat.icon && isChild && (
+                      {cat.icon && (
                         <span className="shrink-0 text-sm">{cat.icon}</span>
                       )}
                       <span className="min-w-0 flex-1 truncate text-sm">
-                        {isChild ? cat.name : cat.name}
+                        {cat.name}
                       </span>
                       {actual && actual.actualAmount > 0 && (
                         <span className="shrink-0 text-xs font-mono text-muted-foreground">
@@ -418,6 +481,7 @@ function BudgetCategorySection({
                       )}
                       <Input
                         type="number"
+                        inputMode="numeric"
                         min={0}
                         step={10000}
                         value={amount || ""}
@@ -435,4 +499,22 @@ function BudgetCategorySection({
       </CardContent>
     </Card>
   )
+}
+
+function AnnualGridSummaryBar({ year }: { year: number }) {
+  const { data: incomeGrid } = useAnnualGrid(year, "income")
+  const { data: expenseGrid } = useAnnualGrid(year, "expense")
+
+  // 대분류(각 그룹의 첫 번째 카테고리)만 합산
+  const income = incomeGrid?.groups.reduce((sum, g) => {
+    const parentTotal = g.categories[0]?.total ?? 0
+    return sum + parentTotal
+  }, 0) ?? 0
+
+  const expense = expenseGrid?.groups.reduce((sum, g) => {
+    const parentTotal = g.categories[0]?.total ?? 0
+    return sum + parentTotal
+  }, 0) ?? 0
+
+  return <BudgetSummaryBar income={income} expense={expense} />
 }

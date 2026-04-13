@@ -2,6 +2,9 @@ import {
   findAllBudgets,
   findBudgetById,
   findBudgetByYearMonth,
+  findAllCategories,
+  findBudgetsWithItemsByYear,
+  upsertBudgetItem,
   createBudget as createBudgetRepo,
   updateBudget as updateBudgetRepo,
   deleteBudget as deleteBudgetRepo,
@@ -13,6 +16,7 @@ import {
   createBudgetSchema,
   updateBudgetSchema,
   copyBudgetSchema,
+  updateAnnualGridCellSchema,
 } from '@/lib/validators'
 import { successResponse, errorResponse } from '@/lib/api-response'
 import type {
@@ -20,6 +24,9 @@ import type {
   BudgetWithItems,
   AnnualBudgetSummary,
   MonthlyBudgetSummary,
+  AnnualGridData,
+  AnnualGridGroup,
+  AnnualGridCategory,
 } from '@/types'
 
 export async function createBudgetService(
@@ -192,5 +199,131 @@ export async function getAnnualBudgetSummaryService(
     totalPlannedExpense,
     totalActualIncome,
     totalActualExpense,
+  })
+}
+
+// === Annual Grid ===
+
+function emptyMonths(): Record<number, number> {
+  const m: Record<number, number> = {}
+  for (let i = 1; i <= 12; i++) m[i] = 0
+  return m
+}
+
+export async function getAnnualGridService(
+  year: number,
+  type?: 'income' | 'expense',
+): Promise<ApiResponse<AnnualGridData>> {
+  const allCategories = await findAllCategories()
+  const budgetsWithItems = await findBudgetsWithItemsByYear(year)
+
+  // 카테고리 맵 구성
+  const catMap = new Map(allCategories.map((c) => [c.id, c]))
+  const parents = allCategories.filter((c) => c.parentId === null)
+  const children = allCategories.filter((c) => c.parentId !== null)
+
+  // type 필터 적용
+  const filteredParents = type
+    ? parents.filter((p) => p.type === type)
+    : parents
+
+  // 대분류별 카테고리 결정: 대분류 자체 + 소분류
+  const parentToChildren = new Map<string, typeof allCategories>()
+  for (const parent of filteredParents) {
+    const subs = children.filter((c) => c.parentId === parent.id)
+    parentToChildren.set(parent.id, subs)
+  }
+
+  // budgetItems를 (month, categoryId) → amount 맵으로 변환
+  const amountMap = new Map<string, number>()
+  for (const budget of budgetsWithItems) {
+    if (budget.month === null) continue
+    for (const item of budget.items) {
+      amountMap.set(`${budget.month}:${item.categoryId}`, item.plannedAmount)
+    }
+  }
+
+  // 그룹 구성
+  const groups: AnnualGridGroup[] = filteredParents.map((parent) => {
+    const subs = parentToChildren.get(parent.id) ?? []
+    const groupMonthlyTotals = emptyMonths()
+    let groupTotal = 0
+
+    // 대분류 자체의 예산
+    const parentMonths = emptyMonths()
+    let parentTotal = 0
+    for (let m = 1; m <= 12; m++) {
+      const amt = amountMap.get(`${m}:${parent.id}`) ?? 0
+      parentMonths[m] = amt
+      parentTotal += amt
+      groupMonthlyTotals[m] += amt
+    }
+    groupTotal += parentTotal
+
+    const parentEntry: AnnualGridCategory = {
+      id: parent.id,
+      name: parent.name,
+      icon: parent.icon,
+      months: parentMonths,
+      total: parentTotal,
+    }
+
+    // 소분류 예산
+    const childEntries: AnnualGridCategory[] = subs.map((sub) => {
+      const months = emptyMonths()
+      let total = 0
+      for (let m = 1; m <= 12; m++) {
+        const amt = amountMap.get(`${m}:${sub.id}`) ?? 0
+        months[m] = amt
+        total += amt
+        groupMonthlyTotals[m] += amt
+      }
+      groupTotal += total
+      return { id: sub.id, name: sub.name, icon: sub.icon, months, total }
+    })
+
+    return {
+      parent: { id: parent.id, name: parent.name, icon: parent.icon },
+      categories: subs.length > 0 ? [parentEntry, ...childEntries] : [parentEntry],
+      monthlyTotals: groupMonthlyTotals,
+      total: groupTotal,
+    }
+  })
+
+  // 전체 합계
+  const monthlyTotals = emptyMonths()
+  let grandTotal = 0
+  for (const group of groups) {
+    for (let m = 1; m <= 12; m++) {
+      monthlyTotals[m] += group.monthlyTotals[m]
+    }
+    grandTotal += group.total
+  }
+
+  return successResponse({
+    groups,
+    monthlyTotals,
+    grandTotal,
+  })
+}
+
+export async function updateAnnualGridCellService(
+  input: unknown,
+): Promise<ApiResponse<{ budgetId: string; year: number; month: number; categoryId: string; amount: number }>> {
+  const parsed = updateAnnualGridCellSchema.safeParse(input)
+  if (!parsed.success) {
+    return errorResponse('VALIDATION_ERROR', parsed.error.issues[0]?.message ?? '입력값이 올바르지 않습니다')
+  }
+
+  const { year, month, categoryId, amount } = parsed.data
+
+  const budget = await upsertBudgetItem(year, month, categoryId, amount)
+
+  return successResponse({
+    budgetId: budget.id,
+    year,
+    month,
+    categoryId,
+    amount,
   })
 }
