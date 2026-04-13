@@ -1,0 +1,34 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1775728471589,
+      "tag": "0000_adorable_madripoor",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1775732261388,
+      "tag": "0001_cooing_sunspot",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1775735978353,
+      "tag": "0002_kind_shiva",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1775736789770,
+      "tag": "0003_clammy_master_chief",
+      "breakpoints": true
+    }
+  ]
+}

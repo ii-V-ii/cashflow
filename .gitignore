@@ -36,6 +36,17 @@ yarn-error.log*
 # vercel
 .vercel
 
+# database
+data/*.db
+data/*.db-journal
+data/*.db-wal
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# serwist (generated service worker)
+public/sw.js
+public/sw.js.map
+public/swe-worker-*.js
+public/swe-worker-*.js.map

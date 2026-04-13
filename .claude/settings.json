@@ -1,5 +1,25 @@
 {
-  "env":{
+  "env": {
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(*)",
+      "Read",
+      "Write",
+      "Edit",
+      "Glob",
+      "Grep",
+      "mcp__plugin_ecc_context7__resolve-library-id",
+      "mcp__plugin_ecc_context7__query-docs",
+      "WebFetch",
+      "WebSearch"
+    ],
+    "deny": [
+      "mcp__plugin_ecc_exa__web_search_exa",
+      "mcp__plugin_ecc_exa__web_fetch_exa",
+      "mcp__plugin_ecc_memory__*",
+      "mcp__plugin_ecc_playwright__*"
+    ]
   }
 }
