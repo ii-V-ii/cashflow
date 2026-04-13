@@ -70,6 +70,7 @@ export const transactions = pgTable(
       .notNull()
       .references(() => accounts.id),
     toAccountId: text('to_account_id').references(() => accounts.id),
+    recurringId: text('recurring_id').references(() => recurringTransactions.id),
     date: text('date').notNull(), // YYYY-MM-DD
     memo: text('memo'),
     createdAt: text('created_at')
@@ -85,6 +86,7 @@ export const transactions = pgTable(
     index('idx_transactions_category_id').on(table.categoryId),
     index('idx_transactions_date').on(table.date),
     index('idx_transactions_to_account_id').on(table.toAccountId),
+    index('idx_transactions_recurring_id').on(table.recurringId),
   ],
 )
 

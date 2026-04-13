@@ -39,7 +39,7 @@ describe('createTransactionService', () => {
   }
 
   it('유효한 입력으로 거래를 생성한다', async () => {
-    const mockTransaction = { id: 'tx_1', ...validInput, toAccountId: null, memo: null, tags: [], createdAt: '', updatedAt: '' }
+    const mockTransaction = { id: 'tx_1', ...validInput, toAccountId: null, recurringId: null, memo: null, tags: [], createdAt: '', updatedAt: '' }
     mockRepos.createTransaction.mockResolvedValue(mockTransaction)
 
     const result = await createTransactionService(validInput)
@@ -85,7 +85,7 @@ describe('createTransactionService', () => {
       toAccountId: 'acc_2',
       date: '2026-04-01',
     }
-    const mockTx = { id: 'tx_2', ...transferInput, categoryId: null, memo: null, tags: [], createdAt: '', updatedAt: '' }
+    const mockTx = { id: 'tx_2', ...transferInput, categoryId: null, recurringId: null, memo: null, tags: [], createdAt: '', updatedAt: '' }
     mockRepos.createTransaction.mockResolvedValue(mockTx)
 
     const result = await createTransactionService(transferInput)

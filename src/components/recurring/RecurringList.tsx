@@ -233,7 +233,7 @@ export function RecurringList() {
           if (!open) setDeleteTarget(null)
         }}
         title="정기 거래 삭제"
-        description="이 정기 거래를 삭제하시겠습니까? 이미 생성된 거래는 유지됩니다."
+        description="이 정기 거래를 삭제하시겠습니까? 아직 도래하지 않은 미래 거래도 함께 삭제됩니다."
         onConfirm={handleConfirmDelete}
         isPending={deleteMutation.isPending}
       />

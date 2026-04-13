@@ -2,6 +2,7 @@ import { eq, and, lte, desc } from 'drizzle-orm'
 import { getDb } from '../index'
 import { recurringTransactions } from '../schema'
 import { generateId } from '../../lib/utils'
+import { calculateNextDate } from '../../lib/services/recurring-service'
 import type { CreateRecurringTransactionInput, UpdateRecurringTransactionInput } from '../../lib/validators'
 
 export async function findAllRecurringTransactions() {
@@ -49,6 +50,15 @@ export async function createRecurringTransaction(input: CreateRecurringTransacti
   const now = new Date().toISOString()
   const id = generateId()
 
+  // nextDate를 오늘 이후로 보정
+  const today = now.slice(0, 10)
+  let nextDate = input.startDate
+  const freq = (input.frequency ?? 'monthly') as 'daily' | 'weekly' | 'monthly' | 'yearly'
+  const intv = input.interval ?? 1
+  while (nextDate < today) {
+    nextDate = calculateNextDate(nextDate, freq, intv)
+  }
+
   await db.insert(recurringTransactions)
     .values({
       id,
@@ -59,10 +69,10 @@ export async function createRecurringTransaction(input: CreateRecurringTransacti
       accountId: input.accountId,
       toAccountId: input.toAccountId ?? null,
       frequency: input.frequency,
-      interval: input.interval ?? 1,
+      interval: intv,
       startDate: input.startDate,
       endDate: input.endDate ?? null,
-      nextDate: input.startDate,
+      nextDate,
       isActive: true,
       createdAt: now,
       updatedAt: now,

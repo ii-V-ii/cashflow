@@ -3,7 +3,7 @@ import { getDb } from '../index'
 import { transactions, transactionTags, tags } from '../schema'
 import { generateId } from '../../lib/utils'
 import { updateAccountBalance } from './account-repository'
-import type { CreateTransactionInput } from '../../lib/validators'
+import type { CreateTransactionInput, UpdateTransactionInput } from '../../lib/validators'
 import type { TransactionFilter, PaginationParams } from '../../types'
 
 export async function findAllTransactions(
@@ -111,6 +111,132 @@ export async function deleteTransaction(id: string) {
   })
 
   return true
+}
+
+export async function updateTransaction(id: string, input: UpdateTransactionInput) {
+  const db = getDb()
+  const existing = await findTransactionById(id)
+  if (!existing) return null
+
+  const now = new Date().toISOString()
+  const inputTags = 'tags' in input ? input.tags : undefined
+
+  await db.transaction(async (tx) => {
+    await tx.update(transactions)
+      .set({
+        ...(input.type !== undefined && { type: input.type }),
+        ...(input.amount !== undefined && { amount: input.amount }),
+        ...(input.description !== undefined && { description: input.description }),
+        ...(input.categoryId !== undefined && { categoryId: input.categoryId }),
+        ...(input.accountId !== undefined && { accountId: input.accountId }),
+        ...(input.toAccountId !== undefined && { toAccountId: input.toAccountId }),
+        ...(input.date !== undefined && { date: input.date }),
+        ...(input.memo !== undefined && { memo: input.memo }),
+        updatedAt: now,
+      })
+      .where(eq(transactions.id, id))
+
+    if (inputTags !== undefined) {
+      await tx.delete(transactionTags)
+        .where(eq(transactionTags.transactionId, id))
+      for (const tagName of inputTags) {
+        const tagId = await findOrCreateTag(tagName)
+        await tx.insert(transactionTags)
+          .values({ transactionId: id, tagId })
+      }
+    }
+  })
+
+  // 잔액 보정: 기존 거래 역산 후 새 거래 적용
+  await reverseBalanceChange(
+    existing.type as 'income' | 'expense' | 'transfer',
+    existing.amount,
+    existing.accountId,
+    existing.toAccountId,
+  )
+  await applyBalanceChange(
+    input.type ?? existing.type,
+    input.amount ?? existing.amount,
+    input.accountId ?? existing.accountId,
+    input.toAccountId ?? existing.toAccountId,
+  )
+
+  return (await findTransactionById(id))!
+}
+
+export async function findByRecurringId(recurringId: string) {
+  const db = getDb()
+  return db
+    .select()
+    .from(transactions)
+    .where(eq(transactions.recurringId, recurringId))
+    .orderBy(transactions.date)
+}
+
+export async function deleteFutureByRecurringId(recurringId: string, afterDate: string) {
+  const db = getDb()
+
+  const futureRows = await db
+    .select({ id: transactions.id })
+    .from(transactions)
+    .where(
+      and(
+        eq(transactions.recurringId, recurringId),
+        gte(transactions.date, afterDate),
+      ),
+    )
+
+  const ids = futureRows.map((r) => r.id)
+  if (ids.length === 0) return 0
+
+  await db.transaction(async (tx) => {
+    await tx.delete(transactionTags)
+      .where(inArray(transactionTags.transactionId, ids))
+    await tx.delete(transactions)
+      .where(inArray(transactions.id, ids))
+  })
+
+  return ids.length
+}
+
+export interface BulkTransactionItem {
+  type: 'income' | 'expense' | 'transfer'
+  amount: number
+  description: string
+  categoryId: string | null
+  accountId: string
+  toAccountId: string | null
+  recurringId: string
+  date: string
+}
+
+export async function bulkInsertTransactions(items: BulkTransactionItem[]) {
+  if (items.length === 0) return
+
+  const db = getDb()
+  const now = new Date().toISOString()
+
+  const values = items.map((item) => ({
+    id: generateId(),
+    type: item.type,
+    amount: item.amount,
+    description: item.description,
+    categoryId: item.categoryId,
+    accountId: item.accountId,
+    toAccountId: item.toAccountId,
+    recurringId: item.recurringId,
+    date: item.date,
+    memo: null,
+    createdAt: now,
+    updatedAt: now,
+  }))
+
+  // 배치 삽입 (잔액 갱신 없음 - 미래 거래이므로)
+  const BATCH_SIZE = 100
+  for (let i = 0; i < values.length; i += BATCH_SIZE) {
+    const batch = values.slice(i, i + BATCH_SIZE)
+    await db.insert(transactions).values(batch)
+  }
 }
 
 // === Internal Helpers ===

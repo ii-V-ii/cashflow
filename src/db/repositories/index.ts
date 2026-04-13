@@ -32,8 +32,13 @@ export {
   findAllTransactions,
   findTransactionById,
   createTransaction,
+  updateTransaction,
   deleteTransaction,
+  findByRecurringId,
+  deleteFutureByRecurringId,
+  bulkInsertTransactions,
 } from './transaction-repository'
+export type { BulkTransactionItem } from './transaction-repository'
 
 export {
   findAllBudgets,

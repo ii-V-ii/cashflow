@@ -131,15 +131,13 @@ export function RecurringForm({
 
   function handleFormSubmit(values: FormValues) {
     let { startDate } = values
+    const yearStr = startDate.slice(0, 4)
+    const monthStr = startDate.slice(5, 7)
+
     if (values.frequency === "yearly" && values.monthOfYear && values.dayOfMonth) {
-      const d = new Date(startDate + "T00:00:00")
-      d.setMonth(values.monthOfYear - 1)
-      d.setDate(values.dayOfMonth)
-      startDate = d.toISOString().slice(0, 10)
+      startDate = `${yearStr}-${String(values.monthOfYear).padStart(2, "0")}-${String(values.dayOfMonth).padStart(2, "0")}`
     } else if (values.frequency === "monthly" && values.dayOfMonth) {
-      const d = new Date(startDate + "T00:00:00")
-      d.setDate(values.dayOfMonth)
-      startDate = d.toISOString().slice(0, 10)
+      startDate = `${yearStr}-${monthStr}-${String(values.dayOfMonth).padStart(2, "0")}`
     }
     onSubmit({
       ...values,

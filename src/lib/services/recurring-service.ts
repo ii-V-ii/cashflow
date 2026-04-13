@@ -9,7 +9,10 @@ import {
   updateNextDate,
   deactivateRecurringTransaction,
   createTransaction,
+  deleteFutureByRecurringId,
+  bulkInsertTransactions,
 } from '@/db/repositories'
+import type { BulkTransactionItem } from '@/db/repositories'
 import {
   createRecurringTransactionSchema,
   updateRecurringTransactionSchema,
@@ -50,6 +53,10 @@ export async function createRecurringTransactionService(
     )
   }
   const recurring = await createRecurringTransaction(parsed.data)
+
+  // 미래 거래 일괄 생성
+  await generateFutureTransactions(recurring)
+
   return successResponse(recurring)
 }
 
@@ -68,16 +75,28 @@ export async function updateRecurringTransactionService(
   if (!recurring) {
     return errorResponse('NOT_FOUND', '정기 거래를 찾을 수 없습니다')
   }
+
+  // 미래 거래 삭제 후 재생성
+  const today = new Date().toISOString().slice(0, 10)
+  await deleteFutureByRecurringId(id, today)
+  await generateFutureTransactions(recurring)
+
   return successResponse(recurring)
 }
 
 export async function deleteRecurringTransactionService(
   id: string,
 ): Promise<ApiResponse<{ deleted: true }>> {
-  const deleted = await deleteRecurringTransaction(id)
-  if (!deleted) {
+  const existing = await findRecurringTransactionById(id)
+  if (!existing) {
     return errorResponse('NOT_FOUND', '정기 거래를 찾을 수 없습니다')
   }
+
+  // 오늘(포함) 이후 연결 거래 일괄 삭제
+  const today = new Date().toISOString().slice(0, 10)
+  await deleteFutureByRecurringId(id, today)
+
+  await deleteRecurringTransaction(id)
   return successResponse({ deleted: true })
 }
 
@@ -157,4 +176,46 @@ function formatDateToYMD(date: Date): string {
   const m = String(date.getMonth() + 1).padStart(2, '0')
   const d = String(date.getDate()).padStart(2, '0')
   return `${y}-${m}-${d}`
+}
+
+const DEFAULT_FUTURE_MONTHS = 12
+
+async function generateFutureTransactions(
+  recurring: NonNullable<Awaited<ReturnType<typeof findRecurringTransactionById>>>,
+): Promise<void> {
+  const today = new Date().toISOString().slice(0, 10)
+
+  // endDate가 있으면 그 날짜까지, 없으면 startDate로부터 12개월
+  const limitDate = recurring.endDate ?? calculateLimitDate(recurring.startDate, DEFAULT_FUTURE_MONTHS)
+
+  const freq = recurring.frequency as RecurringFrequency
+  const items: BulkTransactionItem[] = []
+
+  let currentDate = recurring.startDate
+  // startDate가 과거이면 오늘 이후로 건너뛰기
+  while (currentDate < today) {
+    currentDate = calculateNextDate(currentDate, freq, recurring.interval)
+  }
+
+  while (currentDate <= limitDate) {
+    items.push({
+      type: recurring.type as 'income' | 'expense' | 'transfer',
+      amount: recurring.amount,
+      description: recurring.description,
+      categoryId: recurring.categoryId,
+      accountId: recurring.accountId,
+      toAccountId: recurring.toAccountId,
+      recurringId: recurring.id,
+      date: currentDate,
+    })
+    currentDate = calculateNextDate(currentDate, freq, recurring.interval)
+  }
+
+  await bulkInsertTransactions(items)
+}
+
+function calculateLimitDate(startDate: string, months: number): string {
+  const date = new Date(startDate + 'T00:00:00')
+  date.setMonth(date.getMonth() + months)
+  return formatDateToYMD(date)
 }

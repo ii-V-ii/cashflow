@@ -6,6 +6,8 @@ import {
   ArrowUpCircle,
   ArrowLeftRight,
   Trash2,
+  Pencil,
+  Repeat,
   Search,
   ChevronLeft,
   ChevronRight,
@@ -22,6 +24,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { Skeleton } from "@/components/ui/skeleton"
 import { TransactionForm } from "@/components/transactions/TransactionForm"
 import { CsvExportButton } from "@/components/transactions/CsvExportButton"
@@ -53,33 +60,67 @@ const TYPE_CONFIG = {
   },
 } as const
 
+interface TransactionRow {
+  id: string
+  type: "income" | "expense" | "transfer"
+  amount: number
+  description: string
+  categoryId: string | null
+  accountId: string
+  toAccountId: string | null
+  recurringId: string | null
+  date: string
+  memo: string | null
+}
+
 export default function TransactionsPage() {
+  const now = new Date()
+  const [year, setYear] = useState(now.getFullYear())
+  const [month, setMonth] = useState(now.getMonth() + 1)
   const [page, setPage] = useState(1)
   const [typeFilter, setTypeFilter] = useState<TransactionType | "">("")
   const [categoryFilter, setCategoryFilter] = useState("")
   const [accountFilter, setAccountFilter] = useState("")
   const [search, setSearch] = useState("")
+  const [editTx, setEditTx] = useState<TransactionRow | null>(null)
+  const [editOpen, setEditOpen] = useState(false)
   const limit = 20
 
+  const from = `${year}-${String(month).padStart(2, "0")}-01`
+  const lastDay = new Date(year, month, 0).getDate()
+  const to = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`
+
   const filter = {
+    dateRange: { from, to },
     ...(typeFilter && { type: typeFilter as TransactionType }),
     ...(categoryFilter && { categoryId: categoryFilter }),
     ...(accountFilter && { accountId: accountFilter }),
     ...(search && { search }),
   }
-  const hasFilter = Object.keys(filter).length > 0
 
   const { data, isLoading } = useTransactions({
-    filter: hasFilter ? filter : undefined,
+    filter,
     page,
     limit,
   })
+
+  const handlePrevMonth = useCallback(() => {
+    if (month === 1) { setYear((y) => y - 1); setMonth(12) }
+    else { setMonth((m) => m - 1) }
+    setPage(1)
+  }, [month])
+
+  const handleNextMonth = useCallback(() => {
+    if (month === 12) { setYear((y) => y + 1); setMonth(1) }
+    else { setMonth((m) => m + 1) }
+    setPage(1)
+  }, [month])
   const { data: categories } = useCategories()
   const { data: accounts } = useAccounts()
   const deleteMutation = useDeleteTransaction()
 
   const result = data as
-    | { data: Array<Record<string, unknown>>; meta: { total: number; totalPages: number } }
+    | { data: TransactionRow[]; meta: { total: number; totalPages: number } }
     | undefined
   const transactions = result?.data ?? []
   const meta = result?.meta
@@ -92,6 +133,16 @@ export default function TransactionsPage() {
     },
     [deleteMutation],
   )
+
+  const handleEdit = useCallback((tx: TransactionRow) => {
+    setEditTx(tx)
+    setEditOpen(true)
+  }, [])
+
+  const handleEditOpenChange = useCallback((open: boolean) => {
+    setEditOpen(open)
+    if (!open) setEditTx(null)
+  }, [])
 
   const getCategoryName = useCallback(
     (id: string | null) => {
@@ -132,6 +183,19 @@ export default function TransactionsPage() {
 
         <TabsContent value="all">
 
+      {/* 월 선택 */}
+      <div className="flex items-center gap-2 mb-2">
+        <Button variant="outline" size="icon-sm" onClick={handlePrevMonth} aria-label="이전 달">
+          <ChevronLeft className="size-4" />
+        </Button>
+        <span className="min-w-24 text-center text-sm font-semibold">
+          {year}년 {month}월
+        </span>
+        <Button variant="outline" size="icon-sm" onClick={handleNextMonth} aria-label="다음 달">
+          <ChevronRight className="size-4" />
+        </Button>
+      </div>
+
       {/* 필터 */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative flex-1 min-w-48">
@@ -168,7 +232,7 @@ export default function TransactionsPage() {
           }}
         >
           <option value="">전체 카테고리</option>
-          {categories?.map((c) => (
+          {categories?.filter((c) => c.parentId === null).map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}
             </option>
@@ -213,37 +277,49 @@ export default function TransactionsPage() {
               <TableHead>카테고리</TableHead>
               <TableHead>계좌</TableHead>
               <TableHead className="text-right">금액</TableHead>
-              <TableHead className="w-10" />
+              <TableHead className="w-20" />
             </TableRow>
           </TableHeader>
           <TableBody>
-            {transactions.map((tx: Record<string, unknown>) => {
+            {transactions.map((tx) => {
               const typeKey = tx.type as keyof typeof TYPE_CONFIG
               const config = TYPE_CONFIG[typeKey]
               const Icon = config.icon
               return (
-                <TableRow key={tx.id as string}>
+                <TableRow key={tx.id}>
                   <TableCell className="text-muted-foreground">
-                    {tx.date as string}
+                    {tx.date}
                   </TableCell>
                   <TableCell>
-                    <Badge variant={config.variant} className="gap-1">
-                      <Icon className="size-3" />
-                      {config.label}
-                    </Badge>
+                    <div className="flex items-center gap-1">
+                      <Badge variant={config.variant} className="gap-1">
+                        <Icon className="size-3" />
+                        {config.label}
+                      </Badge>
+                      {tx.recurringId && (
+                        <Tooltip>
+                          <TooltipTrigger
+                            render={<span className="inline-flex" />}
+                          >
+                            <Repeat className="size-3.5 text-muted-foreground" />
+                          </TooltipTrigger>
+                          <TooltipContent>정기 거래</TooltipContent>
+                        </Tooltip>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell className="font-medium max-w-48 truncate">
-                    {tx.description as string}
+                    {tx.description}
                   </TableCell>
                   <TableCell className="text-muted-foreground">
-                    {getCategoryName(tx.categoryId as string | null)}
+                    {getCategoryName(tx.categoryId)}
                   </TableCell>
                   <TableCell>
-                    {getAccountName(tx.accountId as string)}
+                    {getAccountName(tx.accountId)}
                     {tx.toAccountId ? (
                       <span className="text-muted-foreground">
                         {" → "}
-                        {getAccountName(tx.toAccountId as string)}
+                        {getAccountName(tx.toAccountId)}
                       </span>
                     ) : null}
                   </TableCell>
@@ -251,18 +327,28 @@ export default function TransactionsPage() {
                     className={`text-right font-mono font-medium ${config.className}`}
                   >
                     {typeKey === "expense" ? "-" : ""}
-                    {formatCurrency(tx.amount as number)}
+                    {formatCurrency(tx.amount)}
                   </TableCell>
                   <TableCell>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      onClick={() => handleDelete(tx.id as string)}
-                      disabled={deleteMutation.isPending}
-                      aria-label="삭제"
-                    >
-                      <Trash2 className="size-3.5 text-muted-foreground" />
-                    </Button>
+                    <div className="flex items-center gap-0.5">
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => handleEdit(tx)}
+                        aria-label="수정"
+                      >
+                        <Pencil className="size-3.5 text-muted-foreground" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => handleDelete(tx.id)}
+                        disabled={deleteMutation.isPending}
+                        aria-label="삭제"
+                      >
+                        <Trash2 className="size-3.5 text-muted-foreground" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               )
@@ -306,6 +392,13 @@ export default function TransactionsPage() {
 
         </TabsContent>
       </Tabs>
+
+      {/* 수정 다이얼로그 */}
+      <TransactionForm
+        editTransaction={editTx}
+        open={editOpen}
+        onOpenChange={handleEditOpenChange}
+      />
     </div>
   )
 }

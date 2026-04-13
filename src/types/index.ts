@@ -10,6 +10,7 @@ export interface Transaction {
   readonly categoryId: string | null
   readonly accountId: string
   readonly toAccountId: string | null // transfer 전용
+  readonly recurringId: string | null // 정기거래 연결
   readonly date: string // YYYY-MM-DD
   readonly memo: string | null
   readonly tags: readonly string[]

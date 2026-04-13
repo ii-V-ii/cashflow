@@ -1,7 +1,7 @@
 "use client"
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { apiGet, apiPost, apiDelete } from "@/lib/api-client"
+import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api-client"
 import type { TransactionFilter } from "@/types"
 
 interface TransactionRow {
@@ -66,6 +66,19 @@ export function useCreateTransaction() {
   return useMutation({
     mutationFn: (data: Record<string, unknown>) =>
       apiPost<TransactionRow>("/api/transactions", data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["transactions"] })
+      qc.invalidateQueries({ queryKey: ["dashboard"] })
+      qc.invalidateQueries({ queryKey: ["accounts"] })
+    },
+  })
+}
+
+export function useUpdateTransaction() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
+      apiPut<TransactionRow>(`/api/transactions/${id}`, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["transactions"] })
       qc.invalidateQueries({ queryKey: ["dashboard"] })
