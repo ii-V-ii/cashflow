@@ -284,7 +284,7 @@ export interface AssetValuation {
   readonly assetId: string
   readonly date: string // YYYY-MM-DD
   readonly value: number // KRW 정수
-  readonly source: 'manual' | 'api' | 'estimate'
+  readonly source: 'manual' | 'api' | 'estimate' | 'auto'
   readonly memo: string | null
   readonly createdAt: Date
   readonly updatedAt: Date

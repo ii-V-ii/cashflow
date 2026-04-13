@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useMemo } from "react";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -17,8 +17,9 @@ import {
   useUpdateAccount,
   useDeleteAccount,
 } from "@/hooks/use-accounts";
+import { useAssets } from "@/hooks/use-assets";
 import { formatKRW } from "@/lib/format";
-import type { Account, AccountType } from "@/types";
+import type { Account, AccountType, Asset } from "@/types";
 import type { CreateAccountInput } from "@/lib/validators/account";
 
 const ACCOUNT_TYPE_ORDER: AccountType[] = [
@@ -31,7 +32,20 @@ const ACCOUNT_TYPE_ORDER: AccountType[] = [
 
 export default function AccountsPage() {
   const { data: accounts, isLoading } = useAccounts();
+  const { data: assets } = useAssets();
   const createMutation = useCreateAccount();
+
+  const assetsByAccount = useMemo(() => {
+    if (!assets) return new Map<string, Asset[]>();
+    const map = new Map<string, Asset[]>();
+    for (const asset of assets) {
+      if (!asset.accountId) continue;
+      const list = map.get(asset.accountId) ?? [];
+      list.push(asset);
+      map.set(asset.accountId, list);
+    }
+    return map;
+  }, [assets]);
   const updateMutation = useUpdateAccount();
   const deleteMutation = useDeleteAccount();
 
@@ -154,17 +168,18 @@ export default function AccountsPage() {
                           </Badge>
                         </CardTitle>
                       </CardHeader>
-                      <CardContent className="flex items-end justify-between">
-                        <p
-                          className={
-                            account.currentBalance >= 0
-                              ? "text-lg font-semibold"
-                              : "text-lg font-semibold text-destructive"
-                          }
-                        >
-                          {formatKRW(account.currentBalance)}
-                        </p>
-                        <div className="flex gap-1">
+                      <CardContent className="space-y-2">
+                        <div className="flex items-end justify-between">
+                          <p
+                            className={
+                              account.currentBalance >= 0
+                                ? "text-lg font-semibold"
+                                : "text-lg font-semibold text-destructive"
+                            }
+                          >
+                            {formatKRW(account.currentBalance)}
+                          </p>
+                          <div className="flex gap-1">
                           <Button
                             variant="ghost"
                             size="icon-sm"
@@ -181,7 +196,17 @@ export default function AccountsPage() {
                           >
                             <Trash2 className="size-3.5" />
                           </Button>
+                          </div>
                         </div>
+                        {assetsByAccount.get(account.id)?.map((asset) => (
+                          <div
+                            key={asset.id}
+                            className="flex items-center gap-1 text-xs text-muted-foreground"
+                          >
+                            <BarChart3 className="size-3" />
+                            <span>{asset.name}</span>
+                          </div>
+                        ))}
                       </CardContent>
                     </Card>
                   ))}

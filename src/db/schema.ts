@@ -216,7 +216,7 @@ export const assetValuations = pgTable(
     date: date('date').notNull(),
     value: integer('value').notNull(),
     source: text('source', {
-      enum: ['manual', 'api', 'estimate'],
+      enum: ['manual', 'api', 'estimate', 'auto'],
     }).notNull().default('manual'),
     memo: text('memo'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

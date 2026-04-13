@@ -27,7 +27,7 @@ export const updateAssetSchema = createAssetSchema.partial()
 export const createValuationSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   value: z.number().int().min(0),
-  source: z.enum(['manual', 'api', 'estimate']).optional().default('manual'),
+  source: z.enum(['manual', 'api', 'estimate', 'auto']).optional().default('manual'),
   memo: z.string().max(500).nullable().optional().default(null),
 })
 

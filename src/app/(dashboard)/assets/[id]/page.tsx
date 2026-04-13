@@ -2,7 +2,7 @@
 
 import { use, useCallback } from "react"
 import Link from "next/link"
-import { ArrowLeft, TrendingUp, TrendingDown } from "lucide-react"
+import { ArrowLeft, TrendingUp, TrendingDown, Link2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -14,8 +14,16 @@ import {
   ASSET_CATEGORY_LABELS,
 } from "@/components/assets/AssetFormDialog"
 import { useAssetDetail, useCreateValuation } from "@/hooks/use-assets"
+import { useAccounts } from "@/hooks/use-accounts"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import type { CreateValuationInput } from "@/lib/validators/asset"
+
+const SOURCE_LABELS: Record<string, { label: string; variant: "default" | "secondary" | "outline" }> = {
+  manual: { label: "수동", variant: "outline" },
+  auto: { label: "자동", variant: "secondary" },
+  api: { label: "API", variant: "secondary" },
+  estimate: { label: "추정", variant: "outline" },
+}
 
 interface AssetDetailPageProps {
   params: Promise<{ id: string }>
@@ -24,7 +32,10 @@ interface AssetDetailPageProps {
 export default function AssetDetailPage({ params }: AssetDetailPageProps) {
   const { id } = use(params)
   const { data: asset, isLoading } = useAssetDetail(id)
+  const { data: accounts } = useAccounts()
   const createValuation = useCreateValuation()
+
+  const linkedAccount = accounts?.find((a) => a.id === asset?.accountId) ?? null
 
   const handleValuationSubmit = useCallback(
     (data: CreateValuationInput) => {
@@ -170,6 +181,19 @@ export default function AssetDetailPage({ params }: AssetDetailPageProps) {
                 {formatDate(asset.acquisitionDate, "yyyy.MM.dd")}
               </dd>
             </div>
+            <div>
+              <dt className="text-muted-foreground">연결 계좌</dt>
+              <dd className="font-medium">
+                {linkedAccount ? (
+                  <span className="inline-flex items-center gap-1">
+                    <Link2 className="size-3 text-muted-foreground" />
+                    {linkedAccount.name}
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground">없음</span>
+                )}
+              </dd>
+            </div>
             {asset.memo && (
               <div className="col-span-2">
                 <dt className="text-muted-foreground">메모</dt>
@@ -185,6 +209,57 @@ export default function AssetDetailPage({ params }: AssetDetailPageProps) {
         valuations={asset.valuations}
         acquisitionCost={asset.acquisitionCost}
       />
+
+      {/* 평가 이력 테이블 */}
+      {asset.valuations.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">평가 이력 상세</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-muted-foreground">
+                    <th className="pb-2 text-left font-medium">날짜</th>
+                    <th className="pb-2 text-right font-medium">평가금액</th>
+                    <th className="pb-2 text-center font-medium">구분</th>
+                    <th className="pb-2 text-left font-medium">메모</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...asset.valuations]
+                    .sort((a, b) => b.date.localeCompare(a.date))
+                    .map((v) => {
+                      const sourceInfo = SOURCE_LABELS[v.source] ?? {
+                        label: v.source,
+                        variant: "outline" as const,
+                      }
+                      return (
+                        <tr key={v.id} className="border-b last:border-0">
+                          <td className="py-2 font-mono text-xs">
+                            {formatDate(v.date, "yyyy.MM.dd")}
+                          </td>
+                          <td className="py-2 text-right font-mono font-medium">
+                            {formatCurrency(v.value)}
+                          </td>
+                          <td className="py-2 text-center">
+                            <Badge variant={sourceInfo.variant} className="text-xs">
+                              {sourceInfo.label}
+                            </Badge>
+                          </td>
+                          <td className="py-2 text-muted-foreground">
+                            {v.memo ?? "-"}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* 평가 입력 폼 */}
       <ValuationForm

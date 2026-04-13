@@ -1,6 +1,7 @@
 import { eq, and, gte, lte, like, desc, sql, inArray } from 'drizzle-orm'
+import { format } from 'date-fns'
 import { getDb } from '../index'
-import { transactions, transactionTags, tags } from '../schema'
+import { transactions, transactionTags, tags, assets, assetValuations, accounts } from '../schema'
 import { generateId } from '../../lib/utils'
 import { updateAccountBalance } from './account-repository'
 import type { CreateTransactionInput, UpdateTransactionInput } from '../../lib/validators'
@@ -350,6 +351,12 @@ async function applyBalanceChange(
       }
       break
   }
+
+  // 잔액 변경 후 연결된 자산 동기화
+  await syncAssetFromAccount(accountId, tx)
+  if (toAccountId) {
+    await syncAssetFromAccount(toAccountId, tx)
+  }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -376,5 +383,58 @@ async function reverseBalanceChange(
         await updateAccountBalance(toAccountId, -amount, tx)
       }
       break
+  }
+
+  // 잔액 복원 후 연결된 자산 동기화
+  await syncAssetFromAccount(accountId, tx)
+  if (toAccountId) {
+    await syncAssetFromAccount(toAccountId, tx)
+  }
+}
+
+// 계좌 잔액 변경 시 연결된 자산의 currentValue를 동기화하고 평가이력을 기록
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function syncAssetFromAccount(accountId: string, tx?: any) {
+  const executor = tx ?? getDb()
+
+  // 1. 해당 accountId에 연결된 자산 조회
+  const linkedAssets = await executor
+    .select({ id: assets.id })
+    .from(assets)
+    .where(eq(assets.accountId, accountId))
+
+  if (linkedAssets.length === 0) return
+
+  // 2. 계좌의 현재 잔액 조회 (이미 갱신된 상태)
+  const accountRows = await executor
+    .select({ currentBalance: accounts.currentBalance })
+    .from(accounts)
+    .where(eq(accounts.id, accountId))
+
+  const newBalance = accountRows[0]?.currentBalance
+  if (newBalance === undefined) return
+
+  const today = format(new Date(), 'yyyy-MM-dd')
+
+  // 3. 각 연결 자산에 대해 currentValue 갱신 + 평가이력 upsert
+  for (const asset of linkedAssets) {
+    await executor
+      .update(assets)
+      .set({ currentValue: newBalance })
+      .where(eq(assets.id, asset.id))
+
+    await executor
+      .insert(assetValuations)
+      .values({
+        id: generateId(),
+        assetId: asset.id,
+        date: today,
+        value: newBalance,
+        source: 'auto',
+      })
+      .onConflictDoUpdate({
+        target: [assetValuations.assetId, assetValuations.date],
+        set: { value: newBalance, source: 'auto' },
+      })
   }
 }

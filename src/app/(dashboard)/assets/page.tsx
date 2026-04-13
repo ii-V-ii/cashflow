@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useMemo } from "react"
 import Link from "next/link"
-import { Plus, Pencil, Trash2, TrendingUp, TrendingDown } from "lucide-react"
+import { Plus, Pencil, Trash2, TrendingUp, TrendingDown, Link2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -23,13 +23,20 @@ import {
   useDeleteAsset,
   usePortfolioSummary,
 } from "@/hooks/use-assets"
+import { useAccounts } from "@/hooks/use-accounts"
 import { formatCurrency } from "@/lib/utils"
 import type { Asset, AssetCategory } from "@/types"
 import type { CreateAssetInput } from "@/lib/validators/asset"
 
 export default function AssetsPage() {
   const { data: assets, isLoading } = useAssets()
+  const { data: accounts } = useAccounts()
   const { data: portfolio } = usePortfolioSummary()
+
+  const accountNameMap = useMemo(() => {
+    if (!accounts) return new Map<string, string>()
+    return new Map(accounts.map((a) => [a.id, a.name]))
+  }, [accounts])
   const createMutation = useCreateAsset()
   const updateMutation = useUpdateAsset()
   const deleteMutation = useDeleteAsset()
@@ -257,6 +264,12 @@ export default function AssetsPage() {
                               {returnRate.toFixed(1)}%
                             </span>
                           </div>
+                          {asset.accountId && accountNameMap.get(asset.accountId) && (
+                            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                              <Link2 className="size-3" />
+                              <span>{accountNameMap.get(asset.accountId)}</span>
+                            </div>
+                          )}
                           {asset.institution && (
                             <p className="text-xs text-muted-foreground">
                               {asset.institution}
