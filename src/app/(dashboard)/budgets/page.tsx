@@ -90,16 +90,7 @@ export default function BudgetsPage() {
     () => grouped?.filter((c) => c.type === "expense" && c.isActive) ?? [],
     [grouped],
   )
-  const incomeLeaves = useMemo(
-    () => categories?.filter((c) => c.type === "income" && c.isActive) ?? [],
-    [categories],
-  )
-  const expenseLeaves = useMemo(
-    () => categories?.filter((c) => c.type === "expense" && c.isActive) ?? [],
-    [categories],
-  )
-
-  // 합계는 대분류(parentId === null)만 합산
+  // 합계는 대분류만 합산
   const totalIncome = useMemo(() => {
     let sum = 0
     for (const g of incomeGroups) sum += editItems.get(g.id) ?? 0
@@ -110,7 +101,7 @@ export default function BudgetsPage() {
     let sum = 0
     for (const g of expenseGroups) sum += editItems.get(g.id) ?? 0
     return sum
-  }, [editItems, expenseLeaves])
+  }, [editItems, expenseGroups])
 
   const handleAmountChange = useCallback(
     (categoryId: string, value: string) => {
@@ -408,15 +399,7 @@ function BudgetCategorySection({
       <CardContent className="p-0">
         <div className="divide-y">
           {groups.map((parent) => {
-            const hasChildren = parent.children.length > 0
             const parentAmount = editItems.get(parent.id) ?? 0
-            const childrenTotal = hasChildren
-              ? parent.children.reduce(
-                  (sum, c) => sum + (editItems.get(c.id) ?? 0),
-                  0,
-                )
-              : 0
-            const groupTotal = parentAmount + childrenTotal
             const parentActual = budgetDetail?.items.find(
               (i) => i.categoryId === parent.id,
             )
@@ -431,11 +414,6 @@ function BudgetCategorySection({
                   <span className="flex-1 text-sm font-semibold">
                     {parent.name}
                   </span>
-                  {hasChildren && (
-                    <span className="text-xs font-mono text-muted-foreground">
-                      합계 {formatCurrency(groupTotal)}
-                    </span>
-                  )}
                   {parentActual && parentActual.actualAmount > 0 && (
                     <span className="shrink-0 text-xs font-mono text-muted-foreground">
                       실적 {formatCurrency(parentActual.actualAmount)}

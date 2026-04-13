@@ -113,19 +113,19 @@ export function AnnualBudgetGrid({ year, type }: AnnualBudgetGridProps) {
     <div className="overflow-auto rounded-lg border max-h-[70vh]">
       <table className="w-full border-collapse text-sm">
         <thead>
-          <tr className="border-b bg-muted/30">
-            <th className="sticky left-0 top-0 z-30 min-w-[120px] bg-muted/30 px-3 py-2 text-left text-xs font-medium">
+          <tr className="border-b bg-muted">
+            <th className="sticky left-0 top-0 z-30 min-w-[120px] bg-muted px-3 py-2 text-left text-xs font-medium">
               카테고리
             </th>
             {MONTHS.map((m) => (
               <th
                 key={m}
-                className="sticky top-0 z-10 min-w-[80px] bg-muted/30 px-1 py-2 text-right text-xs font-medium whitespace-nowrap"
+                className="sticky top-0 z-10 min-w-[80px] bg-muted px-1 py-2 text-right text-xs font-medium whitespace-nowrap"
               >
                 {MONTH_LABELS[m - 1]}
               </th>
             ))}
-            <th className="sticky top-0 z-10 min-w-[90px] bg-muted/30 px-2 py-2 text-right text-xs font-medium">
+            <th className="sticky top-0 z-10 min-w-[90px] bg-muted px-2 py-2 text-right text-xs font-medium">
               합계
             </th>
           </tr>
@@ -146,8 +146,8 @@ export function AnnualBudgetGrid({ year, type }: AnnualBudgetGridProps) {
           ))}
         </tbody>
         <tfoot>
-          <tr className="border-t bg-muted/50 font-semibold">
-            <td className="sticky left-0 z-10 bg-muted/50 px-3 py-2 text-xs">
+          <tr className="border-t bg-muted font-semibold">
+            <td className="sticky left-0 z-10 bg-muted px-3 py-2 text-xs">
               월합계
             </td>
             {MONTHS.map((m) => (
@@ -239,8 +239,8 @@ function GroupRows({
 
       {/* 소계 (소분류 합계, 대분류 예산 초과 시 빨간색) */}
       {showSubtotal && (
-        <tr className="border-b bg-muted/20">
-          <td className="sticky left-0 z-10 bg-muted/20 px-3 py-1.5 pl-8 text-xs font-semibold text-muted-foreground">
+        <tr className="border-b bg-muted">
+          <td className="sticky left-0 z-10 bg-muted px-3 py-1.5 pl-8 text-xs font-semibold text-muted-foreground">
             소계
           </td>
           {MONTHS.map((m) => {
@@ -297,7 +297,7 @@ function CategoryRow({
   onKeyDown,
 }: CategoryRowProps) {
   return (
-    <tr className="border-b border-border/50 hover:bg-muted/20">
+    <tr className="border-b border-border/50 hover:bg-muted">
       <td className={`sticky left-0 z-10 bg-background px-3 py-1.5 text-sm ${isParent ? "pl-3 font-semibold" : "pl-8"}`}>
         {cat.icon && <span className="mr-1.5 text-xs">{cat.icon}</span>}
         {cat.name}
