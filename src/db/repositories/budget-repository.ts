@@ -140,6 +140,7 @@ export async function getActualsByYearMonth(year: number, month: number) {
 
   // 소분류→대분류 롤업: 예산은 대분류 기준이므로 소분류 실적을 대분류로 합산
   // M-2: SUM()::integer 캐스팅
+  // H-2: status='applied' 필터
   const rows = await db.execute(sql`
     SELECT
       COALESCE(c.parent_id, t.category_id) AS category_id,
@@ -149,6 +150,7 @@ export async function getActualsByYearMonth(year: number, month: number) {
     LEFT JOIN categories c ON t.category_id = c.id
     WHERE t.date >= ${start} AND t.date < ${end}
       AND t.type IN ('income', 'expense')
+      AND t.status = 'applied'
     GROUP BY COALESCE(c.parent_id, t.category_id), t.type
   `)
 
@@ -217,6 +219,7 @@ export async function findBudgetsWithItemsByYear(year: number) {
   }))
 }
 
+// H-4: 전체를 db.transaction으로 감싸기
 export async function upsertBudgetItem(
   year: number,
   month: number,
@@ -225,71 +228,77 @@ export async function upsertBudgetItem(
 ) {
   const db = getDb()
 
-  let budget = await findBudgetByYearMonth(year, month)
+  return db.transaction(async (tx) => {
+    // budget 조회 또는 생성
+    const budgetCondition = and(eq(budgets.year, year), eq(budgets.month, month))
+    let budgetRows = await tx.select().from(budgets).where(budgetCondition)
+    let budget = budgetRows[0] ?? null
 
-  if (!budget) {
-    const id = generateId()
-    await db.insert(budgets).values({
-      id,
-      name: `${year}년 ${month}월 예산`,
-      year,
-      month,
-      totalIncome: 0,
-      totalExpense: 0,
-    })
-    budget = (await findBudgetById(id))!
-  }
-
-  const existingItems = await db
-    .select()
-    .from(budgetItems)
-    .where(and(eq(budgetItems.budgetId, budget.id), eq(budgetItems.categoryId, categoryId)))
-
-  const existingItem = existingItems[0] ?? null
-
-  if (amount === 0 && existingItem) {
-    await db.delete(budgetItems).where(eq(budgetItems.id, existingItem.id))
-  } else if (amount > 0 && existingItem) {
-    await db
-      .update(budgetItems)
-      .set({ plannedAmount: amount })
-      .where(eq(budgetItems.id, existingItem.id))
-  } else if (amount > 0) {
-    await db.insert(budgetItems).values({
-      id: generateId(),
-      budgetId: budget.id,
-      categoryId,
-      plannedAmount: amount,
-    })
-  }
-
-  // totalIncome/totalExpense 재계산 (소분류 있는 대분류는 제외)
-  const allItems = await getBudgetItems(budget.id)
-  const allCats = await db.select().from(categories)
-  const catMap = new Map(allCats.map((c) => [c.id, c]))
-  const parentIds = new Set(allCats.filter(c => c.parentId === null).map(c => c.id))
-  const parentsWithChildren = new Set(allCats.filter(c => c.parentId !== null).map(c => c.parentId!))
-
-  let totalIncome = 0
-  let totalExpense = 0
-  for (const item of allItems) {
-    const cat = catMap.get(item.categoryId)
-    if (!cat) continue
-    // 대분류인데 소분류가 있으면 건너뜀 (소분류 합으로 대체)
-    if (parentIds.has(cat.id) && parentsWithChildren.has(cat.id)) continue
-    if (cat.type === 'income') {
-      totalIncome += item.plannedAmount
-    } else {
-      totalExpense += item.plannedAmount
+    if (!budget) {
+      const id = generateId()
+      await tx.insert(budgets).values({
+        id,
+        name: `${year}년 ${month}월 예산`,
+        year,
+        month,
+        totalIncome: 0,
+        totalExpense: 0,
+      })
+      budgetRows = await tx.select().from(budgets).where(eq(budgets.id, id))
+      budget = budgetRows[0]!
     }
-  }
 
-  await db
-    .update(budgets)
-    .set({ totalIncome, totalExpense })
-    .where(eq(budgets.id, budget.id))
+    const existingItems = await tx
+      .select()
+      .from(budgetItems)
+      .where(and(eq(budgetItems.budgetId, budget.id), eq(budgetItems.categoryId, categoryId)))
 
-  return (await findBudgetById(budget.id))!
+    const existingItem = existingItems[0] ?? null
+
+    if (amount === 0 && existingItem) {
+      await tx.delete(budgetItems).where(eq(budgetItems.id, existingItem.id))
+    } else if (amount > 0 && existingItem) {
+      await tx
+        .update(budgetItems)
+        .set({ plannedAmount: amount })
+        .where(eq(budgetItems.id, existingItem.id))
+    } else if (amount > 0) {
+      await tx.insert(budgetItems).values({
+        id: generateId(),
+        budgetId: budget.id,
+        categoryId,
+        plannedAmount: amount,
+      })
+    }
+
+    // totalIncome/totalExpense 재계산 (소분류 있는 대분류는 제외)
+    const allItems = await tx.select().from(budgetItems).where(eq(budgetItems.budgetId, budget.id))
+    const allCats = await tx.select().from(categories)
+    const catMap = new Map(allCats.map((c) => [c.id, c]))
+    const parentIds = new Set(allCats.filter(c => c.parentId === null).map(c => c.id))
+    const parentsWithChildren = new Set(allCats.filter(c => c.parentId !== null).map(c => c.parentId!))
+
+    let totalIncome = 0
+    let totalExpense = 0
+    for (const item of allItems) {
+      const cat = catMap.get(item.categoryId)
+      if (!cat) continue
+      if (parentIds.has(cat.id) && parentsWithChildren.has(cat.id)) continue
+      if (cat.type === 'income') {
+        totalIncome += item.plannedAmount
+      } else {
+        totalExpense += item.plannedAmount
+      }
+    }
+
+    await tx
+      .update(budgets)
+      .set({ totalIncome, totalExpense })
+      .where(eq(budgets.id, budget.id))
+
+    const result = await tx.select().from(budgets).where(eq(budgets.id, budget.id))
+    return result[0]!
+  })
 }
 
 export async function getMonthlyActuals(year: number) {
@@ -297,7 +306,7 @@ export async function getMonthlyActuals(year: number) {
   const yearStart = `${year}-01-01`
   const yearEnd = `${year + 1}-01-01`
 
-  // M-2: SUM()::integer, 날짜: EXTRACT 사용
+  // M-2: SUM()::integer, 날짜: EXTRACT 사용, H-2: status='applied' 필터
   return db
     .select({
       month: sql<number>`EXTRACT(MONTH FROM ${transactions.date})::integer`.as('month'),
@@ -310,6 +319,7 @@ export async function getMonthlyActuals(year: number) {
         gte(transactions.date, yearStart),
         lt(transactions.date, yearEnd),
         sql`${transactions.type} in ('income', 'expense')`,
+        sql`${transactions.status} = 'applied'`,
       ),
     )
     .groupBy(sql`EXTRACT(MONTH FROM ${transactions.date})`, transactions.type)

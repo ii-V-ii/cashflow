@@ -64,6 +64,7 @@ const TYPE_CONFIG = {
 interface TransactionRow {
   id: string
   type: "income" | "expense" | "transfer"
+  status: "pending" | "applied"
   amount: number
   description: string
   categoryId: string | null
@@ -298,6 +299,11 @@ export default function TransactionsPage() {
                         <Icon className="size-3" />
                         {config.label}
                       </Badge>
+                      {tx.status === "pending" && (
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-amber-300 text-amber-600 bg-amber-50">
+                          예정
+                        </Badge>
+                      )}
                       {tx.recurringId && (
                         <Tooltip>
                           <TooltipTrigger

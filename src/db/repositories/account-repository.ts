@@ -2,6 +2,7 @@ import { eq, sql } from 'drizzle-orm'
 import { getDb } from '../index'
 import { accounts } from '../schema'
 import { generateId } from '../../lib/utils'
+import { syncAssetFromAccount } from './transaction-repository'
 import type { CreateAccountInput, UpdateAccountInput } from '../../lib/validators'
 
 export async function findAllAccounts() {
@@ -50,6 +51,11 @@ export async function updateAccount(id: string, input: UpdateAccountInput) {
       ...(input.icon !== undefined && { icon: input.icon }),
     })
     .where(eq(accounts.id, id))
+
+  // C-3: balance 변경 시 연결 자산 동기화
+  if (input.balance !== undefined && input.balance !== existing.currentBalance) {
+    await syncAssetFromAccount(id)
+  }
 
   return (await findAccountById(id))!
 }

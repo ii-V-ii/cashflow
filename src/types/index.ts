@@ -2,11 +2,14 @@
 
 export type TransactionType = 'income' | 'expense' | 'transfer'
 
+export type TransactionStatus = 'pending' | 'applied'
+
 export interface Transaction {
   readonly id: string
   readonly type: TransactionType
   readonly amount: number // KRW 정수
   readonly description: string
+  readonly status: TransactionStatus
   readonly categoryId: string | null
   readonly accountId: string
   readonly toAccountId: string | null // transfer 전용

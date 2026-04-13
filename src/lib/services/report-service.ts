@@ -18,7 +18,7 @@ export async function getIncomeExpenseTrend(
   const fromDate = `${from}-01`
   const toDate = nextMonthStart(to)
 
-  // M-2: SUM()::integer, 날짜: to_char + 범위 쿼리
+  // M-2: SUM()::integer, 날짜: to_char + 범위 쿼리, H-2: status='applied'
   const rows = await db
     .select({
       yearMonth: sql<string>`to_char(${transactions.date}, 'YYYY-MM')`.as('yearMonth'),
@@ -31,6 +31,7 @@ export async function getIncomeExpenseTrend(
         gte(transactions.date, fromDate),
         lt(transactions.date, toDate),
         sql`${transactions.type} in ('income', 'expense')`,
+        sql`${transactions.status} = 'applied'`,
       ),
     )
     .groupBy(sql`to_char(${transactions.date}, 'YYYY-MM')`, transactions.type)
@@ -81,6 +82,7 @@ export async function getCategoryAnalysis(
     LEFT JOIN categories pc ON c.parent_id = pc.id
     WHERE t.date >= ${start} AND t.date < ${end}
       AND t.type = 'expense'
+      AND t.status = 'applied'
     GROUP BY COALESCE(c.parent_id, c.id), COALESCE(pc.name, c.name, '미분류')
     ORDER BY SUM(t.amount) DESC
   `) as unknown as Array<{ category_id: string | null; category_name: string; amount: number }>
@@ -123,6 +125,7 @@ export async function getNetWorthTrend(
       to_char(date, 'YYYY-MM') AS year_month,
       SUM(CASE WHEN type = 'income' THEN amount WHEN type = 'expense' THEN -amount ELSE 0 END)::integer AS net_effect
     FROM transactions
+    WHERE status = 'applied'
     GROUP BY to_char(date, 'YYYY-MM')
     ORDER BY year_month
   `) as unknown as Array<{ year_month: string; net_effect: number }>

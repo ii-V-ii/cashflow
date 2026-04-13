@@ -1,16 +1,19 @@
+import { eq, and, lte } from 'drizzle-orm'
+import { getDb } from '@/db/index'
+import { transactions } from '@/db/schema'
 import {
   findAllRecurringTransactions,
   findActiveRecurringTransactions,
-  findDueRecurringTransactions,
   findRecurringTransactionById,
   createRecurringTransaction,
   updateRecurringTransaction,
   deleteRecurringTransaction,
   updateNextDate,
   deactivateRecurringTransaction,
-  createTransaction,
   deleteFutureByRecurringId,
   bulkInsertTransactions,
+  updateAccountBalance,
+  syncAssetFromAccount,
 } from '@/db/repositories'
 import type { BulkTransactionItem } from '@/db/repositories'
 import {
@@ -100,44 +103,80 @@ export async function deleteRecurringTransactionService(
   return successResponse({ deleted: true })
 }
 
+// C-1: pending 거래 중 date <= today인 것을 applied로 전환 + 잔액 반영
 export async function processDueTransactionsService(
   today: string,
 ): Promise<ApiResponse<{ processed: number }>> {
-  const dueItems = await findDueRecurringTransactions(today)
-  let processed = 0
+  const db = getDb()
 
-  for (const item of dueItems) {
-    // 종료일 초과 시 비활성화
-    if (item.endDate && item.nextDate > item.endDate) {
-      await deactivateRecurringTransaction(item.id)
-      continue
-    }
-
-    // 거래 생성
-    await createTransaction({
-      type: item.type,
-      amount: item.amount,
-      description: item.description,
-      categoryId: item.categoryId,
-      accountId: item.accountId,
-      toAccountId: item.toAccountId,
-      date: item.nextDate,
-      memo: null,
-      tags: [],
-    })
-
-    // 다음 실행일 계산
-    const nextDate = calculateNextDate(
-      item.nextDate,
-      item.frequency as RecurringFrequency,
-      item.interval,
+  // pending 상태이고 date <= today인 거래 조회
+  const pendingRows = await db
+    .select()
+    .from(transactions)
+    .where(
+      and(
+        eq(transactions.status, 'pending'),
+        lte(transactions.date, today),
+      ),
     )
 
-    // 종료일 초과 시 비활성화, 아니면 nextDate 업데이트
-    if (item.endDate && nextDate > item.endDate) {
-      await deactivateRecurringTransaction(item.id)
-    } else {
-      await updateNextDate(item.id, nextDate)
+  let processed = 0
+
+  for (const row of pendingRows) {
+    await db.transaction(async (tx) => {
+      // status를 applied로 전환
+      await tx.update(transactions)
+        .set({ status: 'applied' })
+        .where(eq(transactions.id, row.id))
+
+      // 잔액 반영
+      const type = row.type as 'income' | 'expense' | 'transfer'
+      switch (type) {
+        case 'income':
+          await updateAccountBalance(row.accountId, row.amount, tx)
+          break
+        case 'expense':
+          await updateAccountBalance(row.accountId, -row.amount, tx)
+          if (row.toAccountId) {
+            await updateAccountBalance(row.toAccountId, row.amount, tx)
+          }
+          break
+        case 'transfer':
+          await updateAccountBalance(row.accountId, -row.amount, tx)
+          if (row.toAccountId) {
+            await updateAccountBalance(row.toAccountId, row.amount, tx)
+          }
+          break
+      }
+
+      // 자산 동기화
+      await syncAssetFromAccount(row.accountId, tx)
+      if (row.toAccountId) {
+        await syncAssetFromAccount(row.toAccountId, tx)
+      }
+    })
+
+    // 정기거래의 nextDate 업데이트
+    if (row.recurringId) {
+      const nextDate = calculateNextDate(
+        row.date,
+        'monthly' as RecurringFrequency, // 기본값; 실제 frequency는 아래서 조회
+        1,
+      )
+      // 정기거래 정보로 정확한 nextDate 계산
+      const recurring = await findRecurringTransactionById(row.recurringId)
+      if (recurring) {
+        const correctNextDate = calculateNextDate(
+          row.date,
+          recurring.frequency as RecurringFrequency,
+          recurring.interval,
+        )
+        if (recurring.endDate && correctNextDate > recurring.endDate) {
+          await deactivateRecurringTransaction(recurring.id)
+        } else {
+          await updateNextDate(recurring.id, correctNextDate)
+        }
+      }
     }
 
     processed++
@@ -152,6 +191,7 @@ export function calculateNextDate(
   interval: number,
 ): string {
   const date = new Date(currentDate + 'T00:00:00')
+  const originalDay = date.getDate()
 
   switch (frequency) {
     case 'daily':
@@ -162,9 +202,17 @@ export function calculateNextDate(
       break
     case 'monthly':
       date.setMonth(date.getMonth() + interval)
+      // H-5: 월말 보정 (예: 1/31 + 1개월 → 3/3이 아닌 2/28)
+      if (date.getDate() !== originalDay) {
+        date.setDate(0) // 이전 달 마지막 날
+      }
       break
     case 'yearly':
       date.setFullYear(date.getFullYear() + interval)
+      // H-5: 윤년 보정 (예: 2/29 + 1년 → 2/28)
+      if (date.getDate() !== originalDay) {
+        date.setDate(0)
+      }
       break
   }
 

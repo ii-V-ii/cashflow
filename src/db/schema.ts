@@ -1,4 +1,5 @@
-import { pgTable, text, integer, real, index, unique, boolean, date, timestamp, jsonb, primaryKey } from 'drizzle-orm/pg-core'
+import { pgTable, text, integer, numeric, index, unique, check, boolean, date, timestamp, jsonb, primaryKey } from 'drizzle-orm/pg-core'
+import { sql } from 'drizzle-orm'
 
 // === Categories ===
 
@@ -20,6 +21,7 @@ export const categories = pgTable(
   (table) => [
     index('idx_categories_type').on(table.type),
     index('idx_categories_parent_id').on(table.parentId),
+    check('chk_expense_kind', sql`${table.type} != 'expense' OR ${table.expenseKind} IS NOT NULL`),
   ],
 )
 
@@ -58,7 +60,8 @@ export const transactions = pgTable(
     }).notNull(),
     amount: integer('amount').notNull(),
     description: text('description').notNull(),
-    categoryId: text('category_id').references(() => categories.id),
+    status: text('status', { enum: ['pending', 'applied'] }).notNull().default('applied'),
+    categoryId: text('category_id').references(() => categories.id, { onDelete: 'set null' }),
     accountId: text('account_id')
       .notNull()
       .references(() => accounts.id),
@@ -76,6 +79,8 @@ export const transactions = pgTable(
     index('idx_transactions_date').on(table.date),
     index('idx_transactions_to_account_id').on(table.toAccountId),
     index('idx_transactions_recurring_id').on(table.recurringId),
+    index('idx_transactions_status').on(table.status),
+    check('chk_amount_positive', sql`${table.amount} > 0`),
   ],
 )
 
@@ -191,6 +196,7 @@ export const assets = pgTable(
     index('idx_assets_asset_category_id').on(table.assetCategoryId),
     index('idx_assets_account_id').on(table.accountId),
     index('idx_assets_is_active').on(table.isActive),
+    unique('uq_assets_account_id').on(table.accountId),
   ],
 )
 
@@ -309,7 +315,7 @@ export const investmentReturns = pgTable(
     dividendIncome: integer('dividend_income').notNull().default(0),
     realizedGain: integer('realized_gain').notNull().default(0),
     unrealizedGain: integer('unrealized_gain').notNull().default(0),
-    returnRate: real('return_rate').default(0),
+    returnRate: numeric('return_rate', { precision: 10, scale: 4, mode: 'number' }).default(0),
     memo: text('memo'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),

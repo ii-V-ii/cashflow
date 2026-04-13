@@ -1,4 +1,4 @@
-import { and, sql, eq } from 'drizzle-orm'
+import { and, sql, gte } from 'drizzle-orm'
 import { getDb } from '@/db/index'
 import { transactions } from '@/db/schema'
 import { findActiveRecurringTransactions } from '@/db/repositories'
@@ -24,7 +24,11 @@ export async function getHistoricalMonthlyAverages(): Promise<{
 }> {
   const db = getDb()
 
-  // M-2: SUM()::integer, 날짜: to_char 사용
+  // H-1: 12개월 제한 + ORDER BY, H-2: status='applied' 필터
+  const twelveMonthsAgo = new Date()
+  twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12)
+  const cutoffDate = `${twelveMonthsAgo.getFullYear()}-${String(twelveMonthsAgo.getMonth() + 1).padStart(2, '0')}-01`
+
   const rows = await db
     .select({
       type: transactions.type,
@@ -32,34 +36,34 @@ export async function getHistoricalMonthlyAverages(): Promise<{
       total: sql<number>`sum(${transactions.amount})::integer`.as('total'),
     })
     .from(transactions)
-    .where(sql`${transactions.type} in ('income', 'expense')`)
+    .where(
+      and(
+        sql`${transactions.type} in ('income', 'expense')`,
+        sql`${transactions.status} = 'applied'`,
+        gte(transactions.date, cutoffDate),
+      ),
+    )
     .groupBy(sql`to_char(${transactions.date}, 'YYYY-MM')`, transactions.type)
+    .orderBy(sql`to_char(${transactions.date}, 'YYYY-MM')`)
 
-  const monthlyIncome = new Map<string, number>()
-  const monthlyExpense = new Map<string, number>()
+  const monthlyIncome: number[] = []
+  const monthlyExpense: number[] = []
 
   for (const row of rows) {
     if (row.type === 'income') {
-      monthlyIncome.set(row.month, row.total)
+      monthlyIncome.push(row.total)
     } else if (row.type === 'expense') {
-      monthlyExpense.set(row.month, row.total)
+      monthlyExpense.push(row.total)
     }
   }
 
-  const incomeValues = Array.from(monthlyIncome.values())
-  const expenseValues = Array.from(monthlyExpense.values())
-
-  // 최근 12개월만 사용
-  const recentIncome = incomeValues.slice(-12)
-  const recentExpense = expenseValues.slice(-12)
-
   const avgIncome =
-    recentIncome.length > 0
-      ? Math.round(recentIncome.reduce((a, b) => a + b, 0) / recentIncome.length)
+    monthlyIncome.length > 0
+      ? Math.round(monthlyIncome.reduce((a, b) => a + b, 0) / monthlyIncome.length)
       : 0
   const avgExpense =
-    recentExpense.length > 0
-      ? Math.round(recentExpense.reduce((a, b) => a + b, 0) / recentExpense.length)
+    monthlyExpense.length > 0
+      ? Math.round(monthlyExpense.reduce((a, b) => a + b, 0) / monthlyExpense.length)
       : 0
 
   return { avgIncome, avgExpense }
@@ -67,11 +71,13 @@ export async function getHistoricalMonthlyAverages(): Promise<{
 
 /**
  * 정기 거래를 특정 월에 반영하여 수입/지출 계산
+ * M-5: activeRecurrings를 외부에서 주입 가능 (루프 밖 1회 조회)
  */
 export async function getRecurringForMonth(
   yearMonth: string, // YYYY-MM
+  preloadedRecurrings?: Awaited<ReturnType<typeof findActiveRecurringTransactions>>,
 ): Promise<{ recurringIncome: number; recurringExpense: number }> {
-  const activeRecurrings = await findActiveRecurringTransactions()
+  const activeRecurrings = preloadedRecurrings ?? await findActiveRecurringTransactions()
   const monthStart = `${yearMonth}-01`
   const lastDay = getLastDayOfMonth(yearMonth)
   const monthEnd = `${yearMonth}-${String(lastDay).padStart(2, '0')}`
@@ -116,6 +122,9 @@ export async function projectCashflow(
   const incomeGrowthRate = (assumptions?.incomeGrowthRate ?? 0) / 100 / 12 // 월간 환산
   const expenseGrowthRate = (assumptions?.expenseGrowthRate ?? 0) / 100 / 12
 
+  // M-5: 루프 밖 1회 조회
+  const activeRecurrings = await findActiveRecurringTransactions()
+
   const projections: MonthlyProjection[] = []
   const startYM = startDate.substring(0, 7)
   const endYM = endDate.substring(0, 7)
@@ -124,7 +133,7 @@ export async function projectCashflow(
   let monthIndex = 0
 
   while (currentYM <= endYM) {
-    const recurring = await getRecurringForMonth(currentYM)
+    const recurring = await getRecurringForMonth(currentYM, activeRecurrings)
 
     // 시간 경과에 따른 증가율 적용
     const growthMultiplierIncome = Math.pow(1 + incomeGrowthRate, monthIndex)

@@ -220,6 +220,7 @@ export async function bulkInsertTransactions(items: BulkTransactionItem[]) {
     recurringId: item.recurringId,
     date: item.date,
     memo: null,
+    status: 'pending' as const,
   }))
 
   // 배치 삽입 (잔액 갱신 없음 - 미래 거래이므로)
@@ -307,22 +308,23 @@ async function batchLoadTagNames<T extends { id: string }>(
   }))
 }
 
-// C-2: findOrCreateTag에 tx 지원
+// H-3: INSERT ON CONFLICT DO NOTHING + SELECT 패턴
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function findOrCreateTag(name: string, tx?: any): Promise<string> {
   const executor = tx ?? getDb()
-  const rows = await executor
-    .select()
-    .from(tags)
-    .where(eq(tags.name, name))
-
-  if (rows[0]) return rows[0].id
 
   const id = generateId()
   await executor.insert(tags)
     .values({ id, name })
+    .onConflictDoNothing({ target: tags.name })
 
-  return id
+  // INSERT 성공 여부와 무관하게 SELECT로 확정
+  const rows = await executor
+    .select({ id: tags.id })
+    .from(tags)
+    .where(eq(tags.name, name))
+
+  return rows[0]!.id
 }
 
 // C-2: applyBalanceChange / reverseBalanceChange에 tx 전달
@@ -392,18 +394,20 @@ async function reverseBalanceChange(
   }
 }
 
-// 계좌 잔액 변경 시 연결된 자산의 currentValue를 동기화하고 평가이력을 기록
+// C-2: UNIQUE(account_id) 후 단일 자산 조회로 단순화
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function syncAssetFromAccount(accountId: string, tx?: any) {
+export async function syncAssetFromAccount(accountId: string, tx?: any) {
   const executor = tx ?? getDb()
 
-  // 1. 해당 accountId에 연결된 자산 조회
-  const linkedAssets = await executor
+  // 1. 해당 accountId에 연결된 단일 자산 조회 (UNIQUE 제약)
+  const linkedRows = await executor
     .select({ id: assets.id })
     .from(assets)
     .where(eq(assets.accountId, accountId))
+    .limit(1)
 
-  if (linkedAssets.length === 0) return
+  const linkedAsset = linkedRows[0]
+  if (!linkedAsset) return
 
   // 2. 계좌의 현재 잔액 조회 (이미 갱신된 상태)
   const accountRows = await executor
@@ -416,25 +420,23 @@ async function syncAssetFromAccount(accountId: string, tx?: any) {
 
   const today = format(new Date(), 'yyyy-MM-dd')
 
-  // 3. 각 연결 자산에 대해 currentValue 갱신 + 평가이력 upsert
-  for (const asset of linkedAssets) {
-    await executor
-      .update(assets)
-      .set({ currentValue: newBalance })
-      .where(eq(assets.id, asset.id))
+  // 3. 단일 자산 currentValue 갱신 + 평가이력 upsert
+  await executor
+    .update(assets)
+    .set({ currentValue: newBalance })
+    .where(eq(assets.id, linkedAsset.id))
 
-    await executor
-      .insert(assetValuations)
-      .values({
-        id: generateId(),
-        assetId: asset.id,
-        date: today,
-        value: newBalance,
-        source: 'auto',
-      })
-      .onConflictDoUpdate({
-        target: [assetValuations.assetId, assetValuations.date],
-        set: { value: newBalance, source: 'auto' },
-      })
-  }
+  await executor
+    .insert(assetValuations)
+    .values({
+      id: generateId(),
+      assetId: linkedAsset.id,
+      date: today,
+      value: newBalance,
+      source: 'auto',
+    })
+    .onConflictDoUpdate({
+      target: [assetValuations.assetId, assetValuations.date],
+      set: { value: newBalance, source: 'auto' },
+    })
 }

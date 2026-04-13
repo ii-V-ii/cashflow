@@ -105,6 +105,7 @@ async function getCategoryTotalsForMonth(start: string, end: string): Promise<Ca
     LEFT JOIN categories pc ON c.parent_id = pc.id
     WHERE t.date >= ${start} AND t.date < ${end}
       AND t.type IN ('income', 'expense')
+      AND t.status = 'applied'
     GROUP BY COALESCE(c.parent_id, c.id), COALESCE(pc.name, c.name, '미분류'), t.type, COALESCE(pc.expense_kind, c.expense_kind)
   `) as unknown as Array<{ category_id: string | null; category_name: string; type: string; expense_kind: string | null; amount: number }>
 
@@ -132,6 +133,7 @@ async function getCategoryTotalsForYear(yearStart: string, yearEnd: string): Pro
     LEFT JOIN categories pc ON c.parent_id = pc.id
     WHERE t.date >= ${yearStart} AND t.date < ${yearEnd}
       AND t.type IN ('income', 'expense')
+      AND t.status = 'applied'
     GROUP BY COALESCE(c.parent_id, c.id), COALESCE(pc.name, c.name, '미분류'), t.type, COALESCE(pc.expense_kind, c.expense_kind)
   `) as unknown as Array<{ category_id: string | null; category_name: string; type: string; expense_kind: string | null; amount: number }>
 
@@ -163,10 +165,10 @@ async function getAccountChangesForMonth(year: number, month: number): Promise<A
           WHEN type = 'expense' THEN -amount
           WHEN type = 'transfer' THEN -amount
         END AS effect
-      FROM transactions WHERE date < ${start} AND recurring_id IS NULL
+      FROM transactions WHERE date < ${start} AND status = 'applied'
       UNION ALL
       SELECT to_account_id AS account_id, amount AS effect
-      FROM transactions WHERE date < ${start} AND recurring_id IS NULL
+      FROM transactions WHERE date < ${start} AND status = 'applied'
         AND type IN ('transfer', 'expense') AND to_account_id IS NOT NULL
     ) e
     GROUP BY e.account_id
@@ -181,15 +183,15 @@ async function getAccountChangesForMonth(year: number, month: number): Promise<A
     FROM (
       SELECT account_id, 'income' AS effect_type, amount
       FROM transactions WHERE date >= ${start} AND date < ${end}
-        AND recurring_id IS NULL AND type = 'income'
+        AND status = 'applied' AND type = 'income'
       UNION ALL
       SELECT to_account_id AS account_id, 'income' AS effect_type, amount
       FROM transactions WHERE date >= ${start} AND date < ${end}
-        AND recurring_id IS NULL AND type IN ('transfer', 'expense') AND to_account_id IS NOT NULL
+        AND status = 'applied' AND type IN ('transfer', 'expense') AND to_account_id IS NOT NULL
       UNION ALL
       SELECT account_id, 'expense' AS effect_type, amount
       FROM transactions WHERE date >= ${start} AND date < ${end}
-        AND recurring_id IS NULL AND type IN ('expense', 'transfer')
+        AND status = 'applied' AND type IN ('expense', 'transfer')
     ) e
     GROUP BY e.account_id
   `) as unknown as Array<{ account_id: string; income: number; expense: number }>
@@ -232,6 +234,7 @@ async function getMonthTotals(
 ): Promise<{ totalIncome: number; totalExpense: number; netIncome: number } | null> {
   const db = getDb()
 
+  // M-4: status='applied' 필터
   const rows = await db
     .select({
       type: transactions.type,
@@ -243,6 +246,7 @@ async function getMonthTotals(
         gte(transactions.date, start),
         lt(transactions.date, end),
         sql`${transactions.type} in ('income', 'expense')`,
+        sql`${transactions.status} = 'applied'`,
       ),
     )
     .groupBy(transactions.type)
@@ -264,7 +268,7 @@ async function getMonthlyTotalsForYear(year: number): Promise<MonthlyRow[]> {
   const yearStart = `${year}-01-01`
   const yearEnd = `${year + 1}-01-01`
 
-  // M-2: SUM()::integer, 날짜: EXTRACT + 범위 쿼리
+  // M-2: SUM()::integer, 날짜: EXTRACT + 범위 쿼리, H-2: status='applied'
   const rows = await db
     .select({
       month: sql<number>`EXTRACT(MONTH FROM ${transactions.date})::integer`.as('month'),
@@ -277,6 +281,7 @@ async function getMonthlyTotalsForYear(year: number): Promise<MonthlyRow[]> {
         gte(transactions.date, yearStart),
         lt(transactions.date, yearEnd),
         sql`${transactions.type} in ('income', 'expense')`,
+        sql`${transactions.status} = 'applied'`,
       ),
     )
     .groupBy(sql`EXTRACT(MONTH FROM ${transactions.date})`, transactions.type)
@@ -308,7 +313,7 @@ async function getYearTotals(
   const yearStart = `${year}-01-01`
   const yearEnd = `${year + 1}-01-01`
 
-  // M-2: SUM()::integer, 날짜: 범위 쿼리
+  // M-2: SUM()::integer, 날짜: 범위 쿼리, H-2: status='applied'
   const rows = await db
     .select({
       type: transactions.type,
@@ -320,6 +325,7 @@ async function getYearTotals(
         gte(transactions.date, yearStart),
         lt(transactions.date, yearEnd),
         sql`${transactions.type} in ('income', 'expense')`,
+        sql`${transactions.status} = 'applied'`,
       ),
     )
     .groupBy(transactions.type)

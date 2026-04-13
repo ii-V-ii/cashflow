@@ -38,6 +38,7 @@ export {
   findByRecurringId,
   deleteFutureByRecurringId,
   bulkInsertTransactions,
+  syncAssetFromAccount,
 } from './transaction-repository'
 export type { BulkTransactionItem } from './transaction-repository'
 
