@@ -8,6 +8,7 @@ export const categories = pgTable(
     id: text('id').primaryKey(),
     name: text('name').notNull(),
     type: text('type', { enum: ['income', 'expense'] }).notNull(),
+    expenseKind: text('expense_kind', { enum: ['consumption', 'saving'] }),
     icon: text('icon'),
     color: text('color'),
     parentId: text('parent_id').references((): any => categories.id, { onDelete: 'set null' }),

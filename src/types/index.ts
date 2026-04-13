@@ -39,10 +39,13 @@ export interface Account {
 
 export type CategoryType = 'income' | 'expense'
 
+export type ExpenseKind = 'consumption' | 'saving'
+
 export interface Category {
   readonly id: string
   readonly name: string
   readonly type: CategoryType
+  readonly expenseKind: ExpenseKind | null
   readonly icon: string | null
   readonly color: string | null
   readonly parentId: string | null
@@ -170,6 +173,7 @@ export interface CategorySubtotal {
   readonly categoryId: string
   readonly categoryName: string
   readonly amount: number
+  readonly expenseKind?: ExpenseKind | null
 }
 
 export interface AccountChange {

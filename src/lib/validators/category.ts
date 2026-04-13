@@ -3,6 +3,7 @@ import { z } from 'zod'
 export const createCategorySchema = z.object({
   name: z.string().min(1).max(50),
   type: z.enum(['income', 'expense']),
+  expenseKind: z.enum(['consumption', 'saving']).nullable().optional().default(null),
   icon: z.string().max(50).nullable().optional().default(null),
   color: z.string().max(20).nullable().optional().default(null),
   parentId: z.string().min(1).nullable().optional().default(null),
@@ -14,6 +15,7 @@ export const createCategorySchema = z.object({
 export const updateCategorySchema = z.object({
   name: z.string().min(1).max(50).optional(),
   type: z.enum(['income', 'expense']).optional(),
+  expenseKind: z.enum(['consumption', 'saving']).nullable().optional(),
   icon: z.string().max(50).nullable().optional(),
   color: z.string().max(20).nullable().optional(),
   parentId: z.string().min(1).nullable().optional(),

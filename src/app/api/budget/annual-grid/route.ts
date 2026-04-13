@@ -25,8 +25,10 @@ export async function GET(request: NextRequest) {
 
   const typeParam = searchParams.get('type') as 'income' | 'expense' | null
   const type = typeParam === 'income' || typeParam === 'expense' ? typeParam : undefined
+  const expenseKindParam = searchParams.get('expenseKind') as 'consumption' | 'saving' | null
+  const expenseKind = expenseKindParam === 'consumption' || expenseKindParam === 'saving' ? expenseKindParam : undefined
 
-  const result = await getAnnualGridService(year, type)
+  const result = await getAnnualGridService(year, type, expenseKind)
   return Response.json(result)
 }
 

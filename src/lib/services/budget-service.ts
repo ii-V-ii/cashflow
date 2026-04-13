@@ -213,6 +213,7 @@ function emptyMonths(): Record<number, number> {
 export async function getAnnualGridService(
   year: number,
   type?: 'income' | 'expense',
+  expenseKind?: 'consumption' | 'saving',
 ): Promise<ApiResponse<AnnualGridData>> {
   const allCategories = await findAllCategories()
   const budgetsWithItems = await findBudgetsWithItemsByYear(year)
@@ -222,10 +223,13 @@ export async function getAnnualGridService(
   const parents = allCategories.filter((c) => c.parentId === null)
   const children = allCategories.filter((c) => c.parentId !== null)
 
-  // type 필터 적용
-  const filteredParents = type
+  // type + expenseKind 필터 적용
+  let filteredParents = type
     ? parents.filter((p) => p.type === type)
     : parents
+  if (expenseKind) {
+    filteredParents = filteredParents.filter((p) => p.expenseKind === expenseKind)
+  }
 
   // 대분류별 카테고리 결정: 대분류 자체 + 소분류
   const parentToChildren = new Map<string, typeof allCategories>()
@@ -246,8 +250,6 @@ export async function getAnnualGridService(
   // 그룹 구성
   const groups: AnnualGridGroup[] = filteredParents.map((parent) => {
     const subs = parentToChildren.get(parent.id) ?? []
-    const groupMonthlyTotals = emptyMonths()
-    let groupTotal = 0
 
     // 대분류 자체의 예산
     const parentMonths = emptyMonths()
@@ -256,9 +258,7 @@ export async function getAnnualGridService(
       const amt = amountMap.get(`${m}:${parent.id}`) ?? 0
       parentMonths[m] = amt
       parentTotal += amt
-      groupMonthlyTotals[m] += amt
     }
-    groupTotal += parentTotal
 
     const parentEntry: AnnualGridCategory = {
       id: parent.id,
@@ -276,11 +276,26 @@ export async function getAnnualGridService(
         const amt = amountMap.get(`${m}:${sub.id}`) ?? 0
         months[m] = amt
         total += amt
-        groupMonthlyTotals[m] += amt
       }
-      groupTotal += total
       return { id: sub.id, name: sub.name, icon: sub.icon, months, total }
     })
+
+    // 합계: 소분류 있으면 소분류만, 없으면 대분류
+    const groupMonthlyTotals = emptyMonths()
+    let groupTotal = 0
+    if (subs.length > 0) {
+      for (const child of childEntries) {
+        for (let m = 1; m <= 12; m++) {
+          groupMonthlyTotals[m] += child.months[m]
+        }
+        groupTotal += child.total
+      }
+    } else {
+      for (let m = 1; m <= 12; m++) {
+        groupMonthlyTotals[m] = parentMonths[m]
+      }
+      groupTotal = parentTotal
+    }
 
     return {
       parent: { id: parent.id, name: parent.name, icon: parent.icon },

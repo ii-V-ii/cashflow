@@ -262,16 +262,21 @@ export async function upsertBudgetItem(
     })
   }
 
-  // totalIncome/totalExpense 재계산
+  // totalIncome/totalExpense 재계산 (소분류 있는 대분류는 제외)
   const allItems = await getBudgetItems(budget.id)
   const allCats = await db.select().from(categories)
   const catMap = new Map(allCats.map((c) => [c.id, c]))
+  const parentIds = new Set(allCats.filter(c => c.parentId === null).map(c => c.id))
+  const parentsWithChildren = new Set(allCats.filter(c => c.parentId !== null).map(c => c.parentId!))
 
   let totalIncome = 0
   let totalExpense = 0
   for (const item of allItems) {
     const cat = catMap.get(item.categoryId)
-    if (cat?.type === 'income') {
+    if (!cat) continue
+    // 대분류인데 소분류가 있으면 건너뜀 (소분류 합으로 대체)
+    if (parentIds.has(cat.id) && parentsWithChildren.has(cat.id)) continue
+    if (cat.type === 'income') {
       totalIncome += item.plannedAmount
     } else {
       totalExpense += item.plannedAmount

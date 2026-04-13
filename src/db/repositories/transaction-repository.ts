@@ -339,6 +339,9 @@ async function applyBalanceChange(
       break
     case 'expense':
       await updateAccountBalance(accountId, -amount, tx)
+      if (toAccountId) {
+        await updateAccountBalance(toAccountId, amount, tx)
+      }
       break
     case 'transfer':
       await updateAccountBalance(accountId, -amount, tx)
@@ -363,6 +366,9 @@ async function reverseBalanceChange(
       break
     case 'expense':
       await updateAccountBalance(accountId, amount, tx)
+      if (toAccountId) {
+        await updateAccountBalance(toAccountId, -amount, tx)
+      }
       break
     case 'transfer':
       await updateAccountBalance(accountId, amount, tx)

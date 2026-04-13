@@ -118,6 +118,22 @@ async function seed() {
     },
   ]
 
+  // === 저축/투자 카테고리 (expenseKind: 'saving') ===
+  const savingExpenseTree = [
+    {
+      name: '저축/투자', icon: '💰', sortOrder: 13,
+      children: [
+        { name: '예금', sortOrder: 0 },
+        { name: '적금', sortOrder: 1 },
+        { name: '주식', sortOrder: 2 },
+        { name: '펀드', sortOrder: 3 },
+        { name: '채권', sortOrder: 4 },
+        { name: '연금', sortOrder: 5 },
+        { name: '보험', sortOrder: 6 },
+      ],
+    },
+  ]
+
   // === 기본 계좌 ===
   const defaultAccounts = [
     { name: '현금', type: 'cash' as const, sortOrder: 1 },
@@ -139,6 +155,7 @@ async function seed() {
     async function insertCategoryTree(
       tree: typeof incomeTree,
       type: 'income' | 'expense',
+      expenseKind: 'consumption' | 'saving' | null = null,
     ) {
       for (const parent of tree) {
         const parentId = generateId()
@@ -147,6 +164,7 @@ async function seed() {
             id: parentId,
             name: parent.name,
             type,
+            expenseKind,
             icon: parent.icon,
             sortOrder: parent.sortOrder,
           })
@@ -157,6 +175,7 @@ async function seed() {
               id: generateId(),
               name: child.name,
               type,
+              expenseKind,
               parentId,
               sortOrder: child.sortOrder,
             })
@@ -165,7 +184,8 @@ async function seed() {
     }
 
     await insertCategoryTree(incomeTree, 'income')
-    await insertCategoryTree(expenseTree, 'expense')
+    await insertCategoryTree(expenseTree, 'expense', 'consumption')
+    await insertCategoryTree(savingExpenseTree, 'expense', 'saving')
 
     // 계좌 시드
     for (const acc of defaultAccounts) {
@@ -198,10 +218,15 @@ async function seed() {
     (sum, p) => sum + 1 + p.children.length,
     0,
   )
+  const totalSavingCategories = savingExpenseTree.reduce(
+    (sum, p) => sum + 1 + p.children.length,
+    0,
+  )
 
   console.log('시드 데이터 생성 완료:')
   console.log(`  - 수입 카테고리: ${totalIncomeCategories}개 (대분류 ${incomeTree.length}개)`)
-  console.log(`  - 지출 카테고리: ${totalExpenseCategories}개 (대분류 ${expenseTree.length}개)`)
+  console.log(`  - 소비성 지출 카테고리: ${totalExpenseCategories}개 (대분류 ${expenseTree.length}개)`)
+  console.log(`  - 저축성 지출 카테고리: ${totalSavingCategories}개 (대분류 ${savingExpenseTree.length}개)`)
   console.log(`  - 계좌: ${defaultAccounts.length}개`)
   console.log(`  - 자산 카테고리: ${defaultAssetCategories.length}개`)
 }

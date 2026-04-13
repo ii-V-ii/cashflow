@@ -19,10 +19,11 @@ const MONTH_LABELS = [
 interface AnnualBudgetGridProps {
   year: number
   type: "income" | "expense"
+  expenseKind?: "consumption" | "saving"
 }
 
-export function AnnualBudgetGrid({ year, type }: AnnualBudgetGridProps) {
-  const { data, isLoading } = useAnnualGrid(year, type)
+export function AnnualBudgetGrid({ year, type, expenseKind }: AnnualBudgetGridProps) {
+  const { data, isLoading } = useAnnualGrid(year, type, expenseKind)
   const updateCell = useUpdateGridCell()
 
   const [editingCell, setEditingCell] = useState<{
@@ -206,8 +207,8 @@ function GroupRows({
 
   return (
     <>
-      {/* 대분류 행 */}
-      {parentCat && (
+      {/* 대분류 행 (소분류 있으면 읽기 전용 + 소분류 합 표시, 없으면 편집 가능) */}
+      {parentCat && !showSubtotal && (
         <CategoryRow
           key={parentCat.id}
           cat={parentCat}
@@ -220,6 +221,22 @@ function GroupRows({
           onBlur={onBlur}
           onKeyDown={onKeyDown}
         />
+      )}
+      {parentCat && showSubtotal && (
+        <tr className="border-b border-border/50 bg-muted">
+          <td className="sticky left-0 z-10 bg-muted px-3 py-1.5 text-sm pl-3 font-semibold">
+            {parentCat.icon && <span className="mr-1.5 text-xs">{parentCat.icon}</span>}
+            {parentCat.name}
+          </td>
+          {MONTHS.map((m) => (
+            <td key={m} className="px-1 py-1 text-right font-mono text-sm font-semibold text-muted-foreground">
+              {(childMonthlyTotals[m] ?? 0) > 0 ? formatCompact(childMonthlyTotals[m]) : <span className="text-muted-foreground/40">-</span>}
+            </td>
+          ))}
+          <td className="px-3 py-1.5 text-right font-mono text-sm font-bold text-muted-foreground">
+            {formatCompact(childTotal)}
+          </td>
+        </tr>
       )}
 
       {/* 소분류 행 */}
@@ -237,38 +254,6 @@ function GroupRows({
         />
       ))}
 
-      {/* 소계 (소분류 합계, 대분류 예산 초과 시 빨간색) */}
-      {showSubtotal && (
-        <tr className="border-b bg-muted">
-          <td className="sticky left-0 z-10 bg-muted px-3 py-1.5 pl-8 text-xs font-semibold text-muted-foreground">
-            소계
-          </td>
-          {MONTHS.map((m) => {
-            const childSum = childMonthlyTotals[m] ?? 0
-            const parentBudget = parentCat?.months[m] ?? 0
-            const isOver = childSum > parentBudget && parentBudget > 0
-            return (
-              <td
-                key={m}
-                className={`px-2 py-1.5 text-right font-mono text-xs font-semibold ${
-                  isOver ? "text-red-600" : "text-muted-foreground"
-                }`}
-              >
-                {formatCompact(childSum)}
-              </td>
-            )
-          })}
-          <td
-            className={`px-3 py-1.5 text-right font-mono text-xs font-bold ${
-              childTotal > (parentCat?.total ?? 0) && (parentCat?.total ?? 0) > 0
-                ? "text-red-600"
-                : "text-muted-foreground"
-            }`}
-          >
-            {formatCompact(childTotal)}
-          </td>
-        </tr>
-      )}
     </>
   )
 }

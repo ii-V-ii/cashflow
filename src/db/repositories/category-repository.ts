@@ -73,11 +73,21 @@ export async function createCategory(input: CreateCategoryInput) {
   const id = generateId()
   const sortOrder = input.sortOrder ?? await getNextSortOrder(input.parentId ?? null, input.type)
 
+  // 소분류는 부모의 expenseKind를 상속
+  let expenseKind = input.expenseKind ?? null
+  if (input.parentId) {
+    const parent = await findCategoryById(input.parentId)
+    if (parent?.expenseKind) {
+      expenseKind = parent.expenseKind
+    }
+  }
+
   await db.insert(categories)
     .values({
       id,
       name: input.name,
       type: input.type,
+      expenseKind,
       icon: input.icon ?? null,
       color: input.color ?? null,
       parentId: input.parentId ?? null,
@@ -96,6 +106,7 @@ export async function updateCategory(id: string, input: UpdateCategoryInput) {
     .set({
       ...(input.name !== undefined && { name: input.name }),
       ...(input.type !== undefined && { type: input.type }),
+      ...(input.expenseKind !== undefined && { expenseKind: input.expenseKind }),
       ...(input.icon !== undefined && { icon: input.icon }),
       ...(input.color !== undefined && { color: input.color }),
       ...(input.parentId !== undefined && { parentId: input.parentId }),

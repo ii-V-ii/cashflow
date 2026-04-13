@@ -9,6 +9,7 @@ import type {
   CategorySubtotal,
   AccountChange,
   MonthlyRow,
+  ExpenseKind,
 } from '@/types'
 
 export async function getMonthlySettlement(
@@ -35,8 +36,13 @@ export async function getMonthlySettlement(
     totalIncome,
     totalExpense,
     netIncome,
-    incomeByCategory: incomeByCategory.map(({ type: _, ...rest }) => rest),
-    expenseByCategory: expenseByCategory.map(({ type: _, ...rest }) => rest),
+    incomeByCategory: incomeByCategory.map(({ type: _, expenseKind: _ek, ...rest }) => rest),
+    expenseByCategory: expenseByCategory.map(({ type: _, ...rest }) => ({
+      categoryId: rest.categoryId,
+      categoryName: rest.categoryName,
+      amount: rest.amount,
+      expenseKind: rest.expenseKind,
+    })),
     accountChanges,
     previousMonth,
   })
@@ -65,8 +71,13 @@ export async function getAnnualSettlement(
     totalExpense,
     netIncome,
     months,
-    incomeByCategory: incomeByCategory.map(({ type: _, ...rest }) => rest),
-    expenseByCategory: expenseByCategory.map(({ type: _, ...rest }) => rest),
+    incomeByCategory: incomeByCategory.map(({ type: _, expenseKind: _ek, ...rest }) => rest),
+    expenseByCategory: expenseByCategory.map(({ type: _, ...rest }) => ({
+      categoryId: rest.categoryId,
+      categoryName: rest.categoryName,
+      amount: rest.amount,
+      expenseKind: rest.expenseKind,
+    })),
     previousYear,
   })
 }
@@ -75,6 +86,7 @@ export async function getAnnualSettlement(
 
 interface CategoryTotalWithType extends CategorySubtotal {
   readonly type: string
+  readonly expenseKind: ExpenseKind | null
 }
 
 // M-2: SUM()::integer, 날짜: 범위 쿼리
@@ -86,19 +98,21 @@ async function getCategoryTotalsForMonth(start: string, end: string): Promise<Ca
       COALESCE(c.parent_id, c.id) AS category_id,
       COALESCE(pc.name, c.name, '미분류') AS category_name,
       t.type,
+      COALESCE(pc.expense_kind, c.expense_kind) AS expense_kind,
       SUM(t.amount)::integer AS amount
     FROM transactions t
     LEFT JOIN categories c ON t.category_id = c.id
     LEFT JOIN categories pc ON c.parent_id = pc.id
     WHERE t.date >= ${start} AND t.date < ${end}
       AND t.type IN ('income', 'expense')
-    GROUP BY COALESCE(c.parent_id, c.id), COALESCE(pc.name, c.name, '미분류'), t.type
-  `) as unknown as Array<{ category_id: string | null; category_name: string; type: string; amount: number }>
+    GROUP BY COALESCE(c.parent_id, c.id), COALESCE(pc.name, c.name, '미분류'), t.type, COALESCE(pc.expense_kind, c.expense_kind)
+  `) as unknown as Array<{ category_id: string | null; category_name: string; type: string; expense_kind: string | null; amount: number }>
 
   return rows.map((row) => ({
     categoryId: row.category_id ?? '',
     categoryName: row.category_name ?? '미분류',
     type: row.type,
+    expenseKind: row.expense_kind as ExpenseKind | null,
     amount: row.amount,
   }))
 }
@@ -111,19 +125,21 @@ async function getCategoryTotalsForYear(yearStart: string, yearEnd: string): Pro
       COALESCE(c.parent_id, c.id) AS category_id,
       COALESCE(pc.name, c.name, '미분류') AS category_name,
       t.type,
+      COALESCE(pc.expense_kind, c.expense_kind) AS expense_kind,
       SUM(t.amount)::integer AS amount
     FROM transactions t
     LEFT JOIN categories c ON t.category_id = c.id
     LEFT JOIN categories pc ON c.parent_id = pc.id
     WHERE t.date >= ${yearStart} AND t.date < ${yearEnd}
       AND t.type IN ('income', 'expense')
-    GROUP BY COALESCE(c.parent_id, c.id), COALESCE(pc.name, c.name, '미분류'), t.type
-  `) as unknown as Array<{ category_id: string | null; category_name: string; type: string; amount: number }>
+    GROUP BY COALESCE(c.parent_id, c.id), COALESCE(pc.name, c.name, '미분류'), t.type, COALESCE(pc.expense_kind, c.expense_kind)
+  `) as unknown as Array<{ category_id: string | null; category_name: string; type: string; expense_kind: string | null; amount: number }>
 
   return rows.map((row) => ({
     categoryId: row.category_id ?? '',
     categoryName: row.category_name ?? '미분류',
     type: row.type,
+    expenseKind: row.expense_kind as ExpenseKind | null,
     amount: row.amount,
   }))
 }
@@ -151,12 +167,12 @@ async function getAccountChangesForMonth(year: number, month: number): Promise<A
       UNION ALL
       SELECT to_account_id AS account_id, amount AS effect
       FROM transactions WHERE date < ${start} AND recurring_id IS NULL
-        AND type = 'transfer' AND to_account_id IS NOT NULL
+        AND type IN ('transfer', 'expense') AND to_account_id IS NOT NULL
     ) e
     GROUP BY e.account_id
   `) as unknown as Array<{ account_id: string; net_effect: number }>
 
-  // 해당 월 수입/지출 집계 (transfer 포함: in→수입, out→지출)
+  // 해당 월 수입/지출 집계 (transfer/저축성지출 포함: in→수입, out→지출)
   const monthEffects = await db.execute(sql`
     SELECT
       e.account_id,
@@ -169,7 +185,7 @@ async function getAccountChangesForMonth(year: number, month: number): Promise<A
       UNION ALL
       SELECT to_account_id AS account_id, 'income' AS effect_type, amount
       FROM transactions WHERE date >= ${start} AND date < ${end}
-        AND recurring_id IS NULL AND type = 'transfer' AND to_account_id IS NOT NULL
+        AND recurring_id IS NULL AND type IN ('transfer', 'expense') AND to_account_id IS NOT NULL
       UNION ALL
       SELECT account_id, 'expense' AS effect_type, amount
       FROM transactions WHERE date >= ${start} AND date < ${end}

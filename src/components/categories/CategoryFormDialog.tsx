@@ -17,7 +17,7 @@ import {
   type CreateCategoryInput,
   type CreateCategoryFormInput,
 } from "@/lib/validators/category"
-import type { Category, CategoryType } from "@/types"
+import type { Category, CategoryType, ExpenseKind } from "@/types"
 
 interface CategoryFormDialogProps {
   open: boolean
@@ -42,17 +42,22 @@ export function CategoryFormDialog({
     register,
     handleSubmit,
     reset,
+    watch,
+    setValue,
     formState: { errors },
   } = useForm<CreateCategoryFormInput, unknown, CreateCategoryInput>({
     resolver: zodResolver(createCategorySchema),
     defaultValues: {
       name: "",
       type: defaultType,
+      expenseKind: null,
       icon: null,
       color: null,
       parentId: null,
     },
   })
+
+  const watchedType = watch("type")
 
   useEffect(() => {
     if (open) {
@@ -61,6 +66,7 @@ export function CategoryFormDialog({
           ? {
               name: category.name,
               type: category.type,
+              expenseKind: category.expenseKind,
               icon: category.icon,
               color: category.color,
               parentId: category.parentId,
@@ -68,6 +74,7 @@ export function CategoryFormDialog({
           : {
               name: "",
               type: defaultType,
+              expenseKind: defaultType === "expense" ? "consumption" : null,
               icon: null,
               color: null,
               parentId: parentId,
@@ -111,6 +118,34 @@ export function CategoryFormDialog({
 
           <input type="hidden" {...register("type")} />
           <input type="hidden" {...register("parentId")} />
+
+          {watchedType === "expense" && (
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium">지출 종류</label>
+              <div className="flex gap-3">
+                <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+                  <input
+                    type="radio"
+                    value="consumption"
+                    checked={watch("expenseKind") === "consumption"}
+                    onChange={() => setValue("expenseKind", "consumption")}
+                    className="accent-primary"
+                  />
+                  소비성
+                </label>
+                <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+                  <input
+                    type="radio"
+                    value="saving"
+                    checked={watch("expenseKind") === "saving"}
+                    onChange={() => setValue("expenseKind", "saving")}
+                    className="accent-primary"
+                  />
+                  저축/투자
+                </label>
+              </div>
+            </div>
+          )}
 
           <div className="flex flex-col gap-2">
             <label htmlFor="category-icon" className="text-sm font-medium">

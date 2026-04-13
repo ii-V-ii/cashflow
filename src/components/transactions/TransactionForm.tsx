@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useMemo } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dialog"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { useGroupedCategories } from "@/hooks/use-categories"
+import type { Category } from "@/types"
 import { useAccounts } from "@/hooks/use-accounts"
 import { useCreateTransaction, useUpdateTransaction } from "@/hooks/use-transactions"
 
@@ -105,6 +106,23 @@ export function TransactionForm({ editTransaction, open: controlledOpen, onOpenC
   }, [editTransaction, form, isControlled])
 
   const currentType = form.watch("type")
+  const selectedCategoryId = form.watch("categoryId")
+
+  // Flat lookup map: categoryId → Category (with expenseKind)
+  const categoryMap = useMemo(() => {
+    if (!grouped) return new Map<string, Category>()
+    const map = new Map<string, Category>()
+    for (const parent of grouped) {
+      map.set(parent.id, parent)
+      for (const child of parent.children) {
+        map.set(child.id, child)
+      }
+    }
+    return map
+  }, [grouped])
+
+  const selectedCategory = selectedCategoryId ? categoryMap.get(selectedCategoryId) : undefined
+  const isSavingExpense = currentType === "expense" && selectedCategory?.expenseKind === "saving"
 
   function handleTabChange(value: string) {
     form.setValue("type", value as FormValues["type"])
@@ -216,8 +234,8 @@ export function TransactionForm({ editTransaction, open: controlledOpen, onOpenC
                 </select>
               </div>
 
-              {/* 이체: 도착 계좌 */}
-              {t === "transfer" && (
+              {/* 이체 또는 저축성 지출: 도착 계좌 */}
+              {(t === "transfer" || (t === "expense" && isSavingExpense)) && (
                 <div>
                   <label className="text-xs font-medium text-muted-foreground">
                     도착 계좌

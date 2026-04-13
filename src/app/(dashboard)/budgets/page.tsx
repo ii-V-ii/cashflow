@@ -90,18 +90,34 @@ export default function BudgetsPage() {
     () => grouped?.filter((c) => c.type === "expense" && c.isActive) ?? [],
     [grouped],
   )
-  // 합계는 대분류만 합산
-  const totalIncome = useMemo(() => {
-    let sum = 0
-    for (const g of incomeGroups) sum += editItems.get(g.id) ?? 0
-    return sum
-  }, [editItems, incomeGroups])
+  const consumptionGroups = useMemo(
+    () => expenseGroups.filter((c) => c.expenseKind !== "saving"),
+    [expenseGroups],
+  )
+  const savingGroups = useMemo(
+    () => expenseGroups.filter((c) => c.expenseKind === "saving"),
+    [expenseGroups],
+  )
 
-  const totalExpense = useMemo(() => {
+  // 합계: 소분류 있으면 소분류 합, 없으면 대분류 값
+  const sumGroups = useCallback((groups: typeof incomeGroups) => {
     let sum = 0
-    for (const g of expenseGroups) sum += editItems.get(g.id) ?? 0
+    for (const g of groups) {
+      if (g.children.length > 0) {
+        for (const child of g.children) {
+          sum += editItems.get(child.id) ?? 0
+        }
+      } else {
+        sum += editItems.get(g.id) ?? 0
+      }
+    }
     return sum
-  }, [editItems, expenseGroups])
+  }, [editItems])
+
+  const totalIncome = useMemo(() => sumGroups(incomeGroups), [sumGroups, incomeGroups])
+  const totalExpense = useMemo(() => sumGroups(expenseGroups), [sumGroups, expenseGroups])
+  const totalConsumption = useMemo(() => sumGroups(consumptionGroups), [sumGroups, consumptionGroups])
+  const totalSaving = useMemo(() => sumGroups(savingGroups), [sumGroups, savingGroups])
 
   const handleAmountChange = useCallback(
     (categoryId: string, value: string) => {
@@ -251,7 +267,12 @@ export default function BudgetsPage() {
           </div>
 
           {/* 요약 바 */}
-          <BudgetSummaryBar income={totalIncome} expense={totalExpense} />
+          <BudgetSummaryBar
+            income={totalIncome}
+            expense={totalExpense}
+            consumption={totalConsumption}
+            saving={totalSaving}
+          />
 
           {/* 수입/지출 서브탭 */}
           {budgetsLoading || detailLoading ? (
@@ -263,18 +284,30 @@ export default function BudgetsPage() {
           ) : (
             <Tabs value={budgetTypeTab} onValueChange={setBudgetTypeTab}>
               <TabsList variant="line" className="w-full sm:w-auto">
-                <TabsTrigger value="expense">지출</TabsTrigger>
+                <TabsTrigger value="expense">소비성 지출</TabsTrigger>
+                <TabsTrigger value="saving">저축/투자</TabsTrigger>
                 <TabsTrigger value="income">수입</TabsTrigger>
               </TabsList>
               <TabsContent value="expense" className="mt-3 space-y-4">
                 <BudgetCategorySection
-                  title="지출"
-                  groups={expenseGroups}
+                  title="소비성 지출"
+                  groups={consumptionGroups}
                   editItems={editItems}
                   budgetDetail={budgetDetail}
                   onAmountChange={handleAmountChange}
-                  total={totalExpense}
+                  total={totalConsumption}
                   colorClass="text-rose-600"
+                />
+              </TabsContent>
+              <TabsContent value="saving" className="mt-3 space-y-4">
+                <BudgetCategorySection
+                  title="저축/투자 지출"
+                  groups={savingGroups}
+                  editItems={editItems}
+                  budgetDetail={budgetDetail}
+                  onAmountChange={handleAmountChange}
+                  total={totalSaving}
+                  colorClass="text-amber-600"
                 />
               </TabsContent>
               <TabsContent value="income" className="mt-3 space-y-4">
@@ -322,11 +355,15 @@ export default function BudgetsPage() {
           {/* 수입/지출 서브탭 */}
           <Tabs value={budgetTypeTab} onValueChange={setBudgetTypeTab}>
             <TabsList variant="line" className="w-full sm:w-auto">
-              <TabsTrigger value="expense">지출</TabsTrigger>
+              <TabsTrigger value="expense">소비성 지출</TabsTrigger>
+              <TabsTrigger value="saving">저축/투자</TabsTrigger>
               <TabsTrigger value="income">수입</TabsTrigger>
             </TabsList>
             <TabsContent value="expense" className="mt-3">
-              <AnnualBudgetGrid year={year} type="expense" />
+              <AnnualBudgetGrid year={year} type="expense" expenseKind="consumption" />
+            </TabsContent>
+            <TabsContent value="saving" className="mt-3">
+              <AnnualBudgetGrid year={year} type="expense" expenseKind="saving" />
             </TabsContent>
             <TabsContent value="income" className="mt-3">
               <AnnualBudgetGrid year={year} type="income" />
@@ -399,14 +436,18 @@ function BudgetCategorySection({
       <CardContent className="p-0">
         <div className="divide-y">
           {groups.map((parent) => {
-            const parentAmount = editItems.get(parent.id) ?? 0
+            const hasChildren = parent.children.length > 0
+            const childrenTotal = hasChildren
+              ? parent.children.reduce((sum, c) => sum + (editItems.get(c.id) ?? 0), 0)
+              : 0
+            const parentAmount = hasChildren ? childrenTotal : (editItems.get(parent.id) ?? 0)
             const parentActual = budgetDetail?.items.find(
               (i) => i.categoryId === parent.id,
             )
 
             return (
               <div key={parent.id}>
-                {/* 대분류 행 (편집 가능) */}
+                {/* 대분류 행 */}
                 <div className="flex items-center gap-3 px-4 py-2 bg-muted/40">
                   {parent.icon && (
                     <span className="shrink-0 text-base">{parent.icon}</span>
@@ -419,16 +460,22 @@ function BudgetCategorySection({
                       실적 {formatCurrency(parentActual.actualAmount)}
                     </span>
                   )}
-                  <Input
-                    type="number"
-                    inputMode="numeric"
-                    min={0}
-                    step={10000}
-                    value={parentAmount || ""}
-                    onChange={(e) => onAmountChange(parent.id, e.target.value)}
-                    placeholder="0"
-                    className="h-8 w-28 shrink-0 text-right font-mono"
-                  />
+                  {hasChildren ? (
+                    <span className="h-8 w-28 shrink-0 flex items-center justify-end font-mono text-sm font-semibold text-muted-foreground">
+                      {formatCurrency(childrenTotal)}
+                    </span>
+                  ) : (
+                    <Input
+                      type="number"
+                      inputMode="numeric"
+                      min={0}
+                      step={10000}
+                      value={parentAmount || ""}
+                      onChange={(e) => onAmountChange(parent.id, e.target.value)}
+                      placeholder="0"
+                      className="h-8 w-28 shrink-0 text-right font-mono"
+                    />
+                  )}
                 </div>
                 {/* 소분류 입력 */}
                 {parent.children.map((cat) => {
@@ -477,18 +524,34 @@ function BudgetCategorySection({
 
 function AnnualGridSummaryBar({ year }: { year: number }) {
   const { data: incomeGrid } = useAnnualGrid(year, "income")
-  const { data: expenseGrid } = useAnnualGrid(year, "expense")
+  const { data: consumptionGrid } = useAnnualGrid(year, "expense", "consumption")
+  const { data: savingGrid } = useAnnualGrid(year, "expense", "saving")
 
-  // 대분류(각 그룹의 첫 번째 카테고리)만 합산
-  const income = incomeGrid?.groups.reduce((sum, g) => {
-    const parentTotal = g.categories[0]?.total ?? 0
-    return sum + parentTotal
-  }, 0) ?? 0
+  // 소분류 있으면 소분류 합만, 없으면 대분류 값
+  const sumGrid = (grid: typeof incomeGrid) => {
+    if (!grid) return 0
+    let sum = 0
+    for (const g of grid.groups) {
+      const children = g.categories.slice(1) // 첫 번째는 대분류
+      if (children.length > 0) {
+        sum += children.reduce((s, c) => s + c.total, 0)
+      } else {
+        sum += g.categories[0]?.total ?? 0
+      }
+    }
+    return sum
+  }
 
-  const expense = expenseGrid?.groups.reduce((sum, g) => {
-    const parentTotal = g.categories[0]?.total ?? 0
-    return sum + parentTotal
-  }, 0) ?? 0
+  const income = sumGrid(incomeGrid)
+  const consumption = sumGrid(consumptionGrid)
+  const saving = sumGrid(savingGrid)
 
-  return <BudgetSummaryBar income={income} expense={expense} />
+  return (
+    <BudgetSummaryBar
+      income={income}
+      expense={consumption + saving}
+      consumption={consumption}
+      saving={saving}
+    />
+  )
 }

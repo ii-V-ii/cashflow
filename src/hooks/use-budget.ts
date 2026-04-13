@@ -90,12 +90,13 @@ export function useCopyBudget() {
 
 // === Annual Grid ===
 
-export function useAnnualGrid(year: number, type: "income" | "expense") {
+export function useAnnualGrid(year: number, type: "income" | "expense", expenseKind?: "consumption" | "saving") {
+  const ek = expenseKind ? `&expenseKind=${expenseKind}` : ""
   return useQuery({
-    queryKey: [...BUDGETS_KEY, "annual-grid", year, type],
+    queryKey: [...BUDGETS_KEY, "annual-grid", year, type, expenseKind],
     queryFn: () =>
       apiGet<AnnualGridData>(
-        `/api/budget/annual-grid?year=${year}&type=${type}`,
+        `/api/budget/annual-grid?year=${year}&type=${type}${ek}`,
       ),
   })
 }
