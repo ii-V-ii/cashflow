@@ -43,7 +43,8 @@ const TYPE_CONFIG = {
   income: {
     label: "수입",
     icon: ArrowDownCircle,
-    variant: "secondary" as const,
+    variant: "default" as const,
+    badgeClass: "bg-emerald-100 text-emerald-700 border-emerald-200",
     className: "text-emerald-600",
   },
   expense: {
@@ -292,7 +293,7 @@ export default function TransactionsPage() {
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1">
-                      <Badge variant={config.variant} className="gap-1">
+                      <Badge variant={config.variant} className={`gap-1 ${"badgeClass" in config ? config.badgeClass : ""}`}>
                         <Icon className="size-3" />
                         {config.label}
                       </Badge>
