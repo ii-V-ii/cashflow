@@ -8,9 +8,11 @@ export async function GET() {
 
   const now = new Date()
   const year = now.getFullYear()
-  const month = String(now.getMonth() + 1).padStart(2, '0')
-  const monthStart = `${year}-${month}-01`
-  const monthEnd = `${year}-${month}-31`
+  const m = now.getMonth() + 1
+  const monthStart = `${year}-${String(m).padStart(2, '0')}-01`
+  const nextM = m === 12 ? 1 : m + 1
+  const nextY = m === 12 ? year + 1 : year
+  const monthEnd = `${nextY}-${String(nextM).padStart(2, '0')}-01`
 
   const { data: monthlyTransactions } = await findAllTransactions(
     { dateRange: { from: monthStart, to: monthEnd } },

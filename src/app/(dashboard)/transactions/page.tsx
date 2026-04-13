@@ -88,8 +88,9 @@ export default function TransactionsPage() {
   const limit = 20
 
   const from = `${year}-${String(month).padStart(2, "0")}-01`
-  const lastDay = new Date(year, month, 0).getDate()
-  const to = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`
+  const nextM = month === 12 ? 1 : month + 1
+  const nextY = month === 12 ? year + 1 : year
+  const to = `${nextY}-${String(nextM).padStart(2, "0")}-01`
 
   const filter = {
     dateRange: { from, to },

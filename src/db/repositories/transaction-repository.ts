@@ -1,4 +1,4 @@
-import { eq, and, gte, lte, like, desc, sql, inArray } from 'drizzle-orm'
+import { eq, and, gte, lte, lt, like, desc, sql, inArray } from 'drizzle-orm'
 import { format } from 'date-fns'
 import { getDb } from '../index'
 import { transactions, transactionTags, tags, assets, assetValuations, accounts } from '../schema'
@@ -250,7 +250,7 @@ function buildFilterConditions(filter?: TransactionFilter) {
     conditions.push(gte(transactions.date, filter.dateRange.from))
   }
   if (filter.dateRange?.to) {
-    conditions.push(lte(transactions.date, filter.dateRange.to))
+    conditions.push(lt(transactions.date, filter.dateRange.to))
   }
   if (filter.minAmount !== undefined) {
     conditions.push(gte(transactions.amount, filter.minAmount))
