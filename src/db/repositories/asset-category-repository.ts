@@ -20,7 +20,6 @@ export async function findAssetCategoryById(id: string) {
 
 export async function createAssetCategory(input: CreateAssetCategoryInput) {
   const db = getDb()
-  const now = new Date().toISOString()
   const id = generateId()
 
   const sortOrder = input.sortOrder ?? await getNextSortOrder()
@@ -32,8 +31,6 @@ export async function createAssetCategory(input: CreateAssetCategoryInput) {
       icon: input.icon ?? null,
       color: input.color ?? null,
       sortOrder,
-      createdAt: now,
-      updatedAt: now,
     })
 
   return (await findAssetCategoryById(id))!
@@ -44,15 +41,12 @@ export async function updateAssetCategory(id: string, input: UpdateAssetCategory
   const existing = await findAssetCategoryById(id)
   if (!existing) return null
 
-  const now = new Date().toISOString()
-
   await db.update(assetCategories)
     .set({
       ...(input.name !== undefined && { name: input.name }),
       ...(input.icon !== undefined && { icon: input.icon }),
       ...(input.color !== undefined && { color: input.color }),
       ...(input.sortOrder !== undefined && { sortOrder: input.sortOrder }),
-      updatedAt: now,
     })
     .where(eq(assetCategories.id, id))
 

@@ -31,16 +31,17 @@ export function compoundGrowth(
 }
 
 /**
- * 특정 시점의 자산 포트폴리오 투영
+ * 자산 목록으로부터 투영 계산 (순수 함수 - DB 호출 없음)
+ * M-10: 루프 밖에서 자산을 한번 조회 후 이 함수에 전달
  */
-export async function projectAssets(
+export function projectAssetsFromList(
+  activeAssets: readonly { id: string; name: string; currentValue: number; type: string }[],
   months: number,
   assumptions: ForecastAssumptions | null,
-): Promise<{
+): {
   totalProjectedValue: number
   projections: readonly AssetProjection[]
-}> {
-  const activeAssets = await findAllAssets(true)
+} {
   const customRates = assumptions?.assetGrowthRates ?? {}
 
   const projections: AssetProjection[] = activeAssets.map((asset) => {
@@ -57,8 +58,21 @@ export async function projectAssets(
   })
 
   const totalProjectedValue = projections.reduce((sum, p) => sum + p.projectedValue, 0)
-
   return { totalProjectedValue, projections }
+}
+
+/**
+ * 특정 시점의 자산 포트폴리오 투영
+ */
+export async function projectAssets(
+  months: number,
+  assumptions: ForecastAssumptions | null,
+): Promise<{
+  totalProjectedValue: number
+  projections: readonly AssetProjection[]
+}> {
+  const activeAssets = await findAllAssets(true)
+  return projectAssetsFromList(activeAssets, months, assumptions)
 }
 
 /**

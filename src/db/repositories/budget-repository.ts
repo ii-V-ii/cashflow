@@ -1,4 +1,4 @@
-import { eq, and, sql, isNull } from 'drizzle-orm'
+import { eq, and, sql, isNull, gte, lt } from 'drizzle-orm'
 import { getDb } from '../index'
 import { budgets, budgetItems, transactions, categories } from '../schema'
 import { generateId } from '../../lib/utils'
@@ -33,9 +33,19 @@ export async function findBudgetById(id: string) {
   return rows[0] ?? null
 }
 
+// H-5: budgetItems 다중행 INSERT 헬퍼
+function buildBudgetItemValues(budgetId: string, items: readonly BudgetItemInput[]) {
+  return items.map((item) => ({
+    id: generateId(),
+    budgetId,
+    categoryId: item.categoryId,
+    plannedAmount: item.plannedAmount,
+    memo: item.memo ?? null,
+  }))
+}
+
 export async function createBudget(input: CreateBudgetInput) {
   const db = getDb()
-  const now = new Date().toISOString()
   const id = generateId()
 
   await db.transaction(async (tx) => {
@@ -48,21 +58,12 @@ export async function createBudget(input: CreateBudgetInput) {
         totalIncome: input.totalIncome ?? 0,
         totalExpense: input.totalExpense ?? 0,
         memo: input.memo ?? null,
-        createdAt: now,
-        updatedAt: now,
       })
 
-    for (const item of input.items ?? []) {
-      await tx.insert(budgetItems)
-        .values({
-          id: generateId(),
-          budgetId: id,
-          categoryId: item.categoryId,
-          plannedAmount: item.plannedAmount,
-          memo: item.memo ?? null,
-          createdAt: now,
-          updatedAt: now,
-        })
+    // H-5: 배치 INSERT
+    const items = input.items ?? []
+    if (items.length > 0) {
+      await tx.insert(budgetItems).values(buildBudgetItemValues(id, items))
     }
   })
 
@@ -74,8 +75,6 @@ export async function updateBudget(id: string, input: UpdateBudgetInput) {
   const existing = await findBudgetById(id)
   if (!existing) return null
 
-  const now = new Date().toISOString()
-
   await db.transaction(async (tx) => {
     await tx.update(budgets)
       .set({
@@ -83,24 +82,15 @@ export async function updateBudget(id: string, input: UpdateBudgetInput) {
         ...(input.totalIncome !== undefined && { totalIncome: input.totalIncome }),
         ...(input.totalExpense !== undefined && { totalExpense: input.totalExpense }),
         ...(input.memo !== undefined && { memo: input.memo }),
-        updatedAt: now,
       })
       .where(eq(budgets.id, id))
 
     if (input.items !== undefined) {
       await tx.delete(budgetItems).where(eq(budgetItems.budgetId, id))
 
-      for (const item of input.items) {
-        await tx.insert(budgetItems)
-          .values({
-            id: generateId(),
-            budgetId: id,
-            categoryId: item.categoryId,
-            plannedAmount: item.plannedAmount,
-            memo: item.memo ?? null,
-            createdAt: now,
-            updatedAt: now,
-          })
+      // H-5: 배치 INSERT
+      if (input.items.length > 0) {
+        await tx.insert(budgetItems).values(buildBudgetItemValues(id, input.items))
       }
     }
   })
@@ -129,22 +119,13 @@ export async function getBudgetItems(budgetId: string) {
 
 export async function setBudgetItems(budgetId: string, items: readonly BudgetItemInput[]) {
   const db = getDb()
-  const now = new Date().toISOString()
 
   await db.transaction(async (tx) => {
     await tx.delete(budgetItems).where(eq(budgetItems.budgetId, budgetId))
 
-    for (const item of items) {
-      await tx.insert(budgetItems)
-        .values({
-          id: generateId(),
-          budgetId,
-          categoryId: item.categoryId,
-          plannedAmount: item.plannedAmount,
-          memo: item.memo ?? null,
-          createdAt: now,
-          updatedAt: now,
-        })
+    // H-5: 배치 INSERT
+    if (items.length > 0) {
+      await tx.insert(budgetItems).values(buildBudgetItemValues(budgetId, items))
     }
   })
 
@@ -155,17 +136,18 @@ export async function setBudgetItems(budgetId: string, items: readonly BudgetIte
 
 export async function getActualsByYearMonth(year: number, month: number) {
   const db = getDb()
-  const datePrefix = `${year}-${String(month).padStart(2, '0')}`
+  const { start, end } = monthDateRange(year, month)
 
   // 소분류→대분류 롤업: 예산은 대분류 기준이므로 소분류 실적을 대분류로 합산
+  // M-2: SUM()::integer 캐스팅
   const rows = await db.execute(sql`
     SELECT
       COALESCE(c.parent_id, t.category_id) AS category_id,
       t.type,
-      SUM(t.amount) AS total
+      SUM(t.amount)::integer AS total
     FROM transactions t
     LEFT JOIN categories c ON t.category_id = c.id
-    WHERE t.date LIKE ${datePrefix + '%'}
+    WHERE t.date >= ${start} AND t.date < ${end}
       AND t.type IN ('income', 'expense')
     GROUP BY COALESCE(c.parent_id, t.category_id), t.type
   `)
@@ -241,7 +223,6 @@ export async function upsertBudgetItem(
   amount: number,
 ) {
   const db = getDb()
-  const now = new Date().toISOString()
 
   let budget = await findBudgetByYearMonth(year, month)
 
@@ -254,8 +235,6 @@ export async function upsertBudgetItem(
       month,
       totalIncome: 0,
       totalExpense: 0,
-      createdAt: now,
-      updatedAt: now,
     })
     budget = (await findBudgetById(id))!
   }
@@ -272,7 +251,7 @@ export async function upsertBudgetItem(
   } else if (amount > 0 && existingItem) {
     await db
       .update(budgetItems)
-      .set({ plannedAmount: amount, updatedAt: now })
+      .set({ plannedAmount: amount })
       .where(eq(budgetItems.id, existingItem.id))
   } else if (amount > 0) {
     await db.insert(budgetItems).values({
@@ -280,8 +259,6 @@ export async function upsertBudgetItem(
       budgetId: budget.id,
       categoryId,
       plannedAmount: amount,
-      createdAt: now,
-      updatedAt: now,
     })
   }
 
@@ -303,7 +280,7 @@ export async function upsertBudgetItem(
 
   await db
     .update(budgets)
-    .set({ totalIncome, totalExpense, updatedAt: now })
+    .set({ totalIncome, totalExpense })
     .where(eq(budgets.id, budget.id))
 
   return (await findBudgetById(budget.id))!
@@ -311,19 +288,33 @@ export async function upsertBudgetItem(
 
 export async function getMonthlyActuals(year: number) {
   const db = getDb()
+  const yearStart = `${year}-01-01`
+  const yearEnd = `${year + 1}-01-01`
 
+  // M-2: SUM()::integer, 날짜: EXTRACT 사용
   return db
     .select({
-      month: sql<number>`cast(substr(${transactions.date}, 6, 2) as integer)`.as('month'),
+      month: sql<number>`EXTRACT(MONTH FROM ${transactions.date})::integer`.as('month'),
       type: transactions.type,
-      total: sql<number>`sum(${transactions.amount})`.as('total'),
+      total: sql<number>`sum(${transactions.amount})::integer`.as('total'),
     })
     .from(transactions)
     .where(
       and(
-        sql`${transactions.date} like ${year + '%'}`,
+        gte(transactions.date, yearStart),
+        lt(transactions.date, yearEnd),
         sql`${transactions.type} in ('income', 'expense')`,
       ),
     )
-    .groupBy(sql`substr(${transactions.date}, 6, 2)`, transactions.type)
+    .groupBy(sql`EXTRACT(MONTH FROM ${transactions.date})`, transactions.type)
+}
+
+// === Helpers ===
+
+function monthDateRange(year: number, month: number) {
+  const start = `${year}-${String(month).padStart(2, '0')}-01`
+  const nextMonth = month === 12 ? 1 : month + 1
+  const nextYear = month === 12 ? year + 1 : year
+  const end = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`
+  return { start, end }
 }

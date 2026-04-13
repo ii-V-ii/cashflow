@@ -44,7 +44,6 @@ export async function findAssetsByCategory(category: 'financial' | 'non_financia
 
 export async function createAsset(input: CreateAssetInput) {
   const db = getDb()
-  const now = new Date().toISOString()
   const id = generateId()
 
   await db.insert(assets)
@@ -62,8 +61,6 @@ export async function createAsset(input: CreateAssetInput) {
       memo: input.memo ?? null,
       isActive: input.isActive ?? true,
       metadata: input.metadata ?? null,
-      createdAt: now,
-      updatedAt: now,
     })
 
   return (await findAssetById(id))!
@@ -73,8 +70,6 @@ export async function updateAsset(id: string, input: UpdateAssetInput) {
   const db = getDb()
   const existing = await findAssetById(id)
   if (!existing) return null
-
-  const now = new Date().toISOString()
 
   await db.update(assets)
     .set({
@@ -90,7 +85,6 @@ export async function updateAsset(id: string, input: UpdateAssetInput) {
       ...(input.memo !== undefined && { memo: input.memo }),
       ...(input.isActive !== undefined && { isActive: input.isActive }),
       ...(input.metadata !== undefined && { metadata: input.metadata }),
-      updatedAt: now,
     })
     .where(eq(assets.id, id))
 
@@ -111,9 +105,8 @@ export async function updateCurrentValue(id: string, value: number) {
   const existing = await findAssetById(id)
   if (!existing) return null
 
-  const now = new Date().toISOString()
   await db.update(assets)
-    .set({ currentValue: value, updatedAt: now })
+    .set({ currentValue: value })
     .where(eq(assets.id, id))
 
   return (await findAssetById(id))!
@@ -143,7 +136,6 @@ export async function getLatestValuation(assetId: string) {
 
 export async function addValuation(assetId: string, input: CreateValuationInput) {
   const db = getDb()
-  const now = new Date().toISOString()
   const id = generateId()
 
   await db.insert(assetValuations)
@@ -154,8 +146,6 @@ export async function addValuation(assetId: string, input: CreateValuationInput)
       value: input.value,
       source: input.source ?? 'manual',
       memo: input.memo ?? null,
-      createdAt: now,
-      updatedAt: now,
     })
 
   // 최신 평가인 경우 자산 현재가치도 갱신

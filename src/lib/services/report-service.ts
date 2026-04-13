@@ -1,4 +1,4 @@
-import { and, eq, sql } from 'drizzle-orm'
+import { and, sql, gte, lt } from 'drizzle-orm'
 import { getDb } from '@/db/index'
 import { transactions, categories, accounts } from '@/db/schema'
 import { successResponse } from '@/lib/api-response'
@@ -15,22 +15,25 @@ export async function getIncomeExpenseTrend(
   to: string,   // YYYY-MM
 ): Promise<ApiResponse<readonly IncomeExpenseTrendItem[]>> {
   const db = getDb()
+  const fromDate = `${from}-01`
+  const toDate = nextMonthStart(to)
 
+  // M-2: SUM()::integer, 날짜: to_char + 범위 쿼리
   const rows = await db
     .select({
-      yearMonth: sql<string>`substr(${transactions.date}, 1, 7)`.as('yearMonth'),
+      yearMonth: sql<string>`to_char(${transactions.date}, 'YYYY-MM')`.as('yearMonth'),
       type: transactions.type,
-      total: sql<number>`sum(${transactions.amount})`.as('total'),
+      total: sql<number>`sum(${transactions.amount})::integer`.as('total'),
     })
     .from(transactions)
     .where(
       and(
-        sql`substr(${transactions.date}, 1, 7) >= ${from}`,
-        sql`substr(${transactions.date}, 1, 7) <= ${to}`,
+        gte(transactions.date, fromDate),
+        lt(transactions.date, toDate),
         sql`${transactions.type} in ('income', 'expense')`,
       ),
     )
-    .groupBy(sql`substr(${transactions.date}, 1, 7)`, transactions.type)
+    .groupBy(sql`to_char(${transactions.date}, 'YYYY-MM')`, transactions.type)
 
   const monthMap = new Map<string, { income: number; expense: number }>()
 
@@ -65,18 +68,18 @@ export async function getCategoryAnalysis(
   month: number,
 ): Promise<ApiResponse<CategoryAnalysis>> {
   const db = getDb()
-  const datePrefix = `${year}-${String(month).padStart(2, '0')}`
+  const { start, end } = monthDateRange(year, month)
 
-  // 소분류→대분류 롤업
+  // 소분류→대분류 롤업, M-2: SUM()::integer, 날짜: 범위 쿼리
   const rows = await db.execute(sql`
     SELECT
       COALESCE(c.parent_id, c.id) AS category_id,
       COALESCE(pc.name, c.name, '미분류') AS category_name,
-      SUM(t.amount) AS amount
+      SUM(t.amount)::integer AS amount
     FROM transactions t
     LEFT JOIN categories c ON t.category_id = c.id
     LEFT JOIN categories pc ON c.parent_id = pc.id
-    WHERE t.date LIKE ${datePrefix + '%'}
+    WHERE t.date >= ${start} AND t.date < ${end}
       AND t.type = 'expense'
     GROUP BY COALESCE(c.parent_id, c.id), COALESCE(pc.name, c.name, '미분류')
     ORDER BY SUM(t.amount) DESC
@@ -100,33 +103,56 @@ export async function getCategoryAnalysis(
   })
 }
 
+// H-3: 월별 루프 → 단일 쿼리 + 누적합
 export async function getNetWorthTrend(
   months: number,
 ): Promise<ApiResponse<readonly NetWorthPoint[]>> {
   const db = getDb()
-
-  // 현재 전체 계좌 잔액 합계
-  const allAccounts = await db.select().from(accounts)
-  const currentTotal = allAccounts.reduce((sum, a) => sum + a.currentBalance, 0)
-
-  // 최근 N개월 범위 생성
   const now = new Date()
-
   const monthList = generatePastMonths(now, months)
 
-  // 각 월 이후의 전체 거래 효과를 역산하여 해당 월 말 잔액 추정
-  // 해당 월 말 잔액 = 현재 잔액 - (해당월 다음달~현재까지의 거래 효과)
+  if (monthList.length === 0) return successResponse([])
+
+  // 전체 계좌 initialBalance 합계
+  const allAccounts = await db.select().from(accounts)
+  const totalInitialBalance = allAccounts.reduce((sum, a) => sum + a.initialBalance, 0)
+
+  // 단일 쿼리: 월별 순효과 (transfer는 전 계좌 합산 시 net-zero이므로 제외)
+  const rows = await db.execute(sql`
+    SELECT
+      to_char(date, 'YYYY-MM') AS year_month,
+      SUM(CASE WHEN type = 'income' THEN amount WHEN type = 'expense' THEN -amount ELSE 0 END)::integer AS net_effect
+    FROM transactions
+    GROUP BY to_char(date, 'YYYY-MM')
+    ORDER BY year_month
+  `) as unknown as Array<{ year_month: string; net_effect: number }>
+
+  // 누적합으로 각 월 말 잔액 계산
+  const effectMap = new Map(rows.map((r) => [r.year_month, r.net_effect]))
+  const allMonthsSorted = Array.from(effectMap.keys()).sort()
+
+  let cumulativeBalance = totalInitialBalance
+  const endOfMonthBalance = new Map<string, number>()
+
+  for (const ym of allMonthsSorted) {
+    cumulativeBalance += effectMap.get(ym)!
+    endOfMonthBalance.set(ym, cumulativeBalance)
+  }
+
+  // 요청된 월 범위의 잔액 추출
   const points: NetWorthPoint[] = []
+  let lastBalance = totalInitialBalance
+
+  for (const ym of allMonthsSorted) {
+    if (ym >= monthList[0]) break
+    lastBalance = endOfMonthBalance.get(ym)!
+  }
 
   for (const ym of monthList) {
-    const nextMonth = getNextMonth(ym)
-    const effectAfter = await getTotalEffectsFrom(nextMonth)
-    const balance = currentTotal - effectAfter
-
-    points.push({
-      yearMonth: ym,
-      totalBalance: balance,
-    })
+    if (endOfMonthBalance.has(ym)) {
+      lastBalance = endOfMonthBalance.get(ym)!
+    }
+    points.push({ yearMonth: ym, totalBalance: lastBalance })
   }
 
   return successResponse(points)
@@ -171,39 +197,19 @@ function generatePastMonths(now: Date, count: number): string[] {
   return result
 }
 
-function getNextMonth(yearMonth: string): string {
+// === Date Helpers ===
+
+function monthDateRange(year: number, month: number) {
+  const start = `${year}-${String(month).padStart(2, '0')}-01`
+  const nextMonth = month === 12 ? 1 : month + 1
+  const nextYear = month === 12 ? year + 1 : year
+  const end = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`
+  return { start, end }
+}
+
+function nextMonthStart(yearMonth: string): string {
   const [y, m] = yearMonth.split('-').map(Number)
   const nextM = m === 12 ? 1 : m + 1
   const nextY = m === 12 ? y + 1 : y
-  return `${nextY}-${String(nextM).padStart(2, '0')}`
-}
-
-async function getTotalEffectsFrom(fromYearMonth: string): Promise<number> {
-  const db = getDb()
-  const fromDate = `${fromYearMonth}-01`
-
-  // income adds to balance
-  const incomeRows = await db
-    .select({ total: sql<number>`coalesce(sum(${transactions.amount}), 0)`.as('total') })
-    .from(transactions)
-    .where(
-      and(
-        eq(transactions.type, 'income'),
-        sql`${transactions.date} >= ${fromDate}`,
-      ),
-    )
-
-  // expense subtracts from balance
-  const expenseRows = await db
-    .select({ total: sql<number>`coalesce(sum(${transactions.amount}), 0)`.as('total') })
-    .from(transactions)
-    .where(
-      and(
-        eq(transactions.type, 'expense'),
-        sql`${transactions.date} >= ${fromDate}`,
-      ),
-    )
-
-  // transfers are net-zero across all accounts
-  return (incomeRows[0]?.total ?? 0) - (expenseRows[0]?.total ?? 0)
+  return `${nextY}-${String(nextM).padStart(2, '0')}-01`
 }

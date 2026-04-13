@@ -31,14 +31,13 @@ export async function POST(request: NextRequest) {
   }
 
   const db = getDb()
-  const now = new Date().toISOString()
 
   await db.transaction(async (tx) => {
     await Promise.all(
       items.map((item) =>
         tx
           .update(categories)
-          .set({ sortOrder: item.sortOrder, updatedAt: now })
+          .set({ sortOrder: item.sortOrder })
           .where(eq(categories.id, item.id)),
       ),
     )

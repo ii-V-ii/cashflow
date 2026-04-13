@@ -30,7 +30,7 @@ vi.mock('@/db/index', () => ({
 vi.mock('@/db/schema', () => ({
   transactions: { date: 'date', type: 'type', amount: 'amount', categoryId: 'categoryId', accountId: 'accountId', toAccountId: 'toAccountId' },
   categories: { id: 'id', name: 'name', type: 'type' },
-  accounts: { id: 'id', name: 'name', currentBalance: 'currentBalance' },
+  accounts: { id: 'id', name: 'name', currentBalance: 'currentBalance', initialBalance: 'initialBalance' },
 }))
 
 vi.mock('drizzle-orm', () => {
@@ -55,8 +55,13 @@ describe('getMonthlySettlement', () => {
   it('데이터가 없으면 0으로 반환한다', async () => {
     // 1. getCategoryTotalsForMonth → db.execute
     mockExecute.mockResolvedValueOnce([])
-    // 2. getAccountChangesForMonth → db.select().from(accounts) → mockResolve
+    // 2. getAccountChangesForMonth:
+    //    - db.select().from(accounts) → mockResolve
     mockResolve.mockResolvedValueOnce([])
+    //    - db.execute (pre-month effects) → mockExecute
+    mockExecute.mockResolvedValueOnce([])
+    //    - db.execute (month effects) → mockExecute
+    mockExecute.mockResolvedValueOnce([])
     // 3. getPreviousMonthTotals → getMonthTotals → query chain → mockResolve
     mockResolve.mockResolvedValueOnce([])
 
@@ -83,8 +88,10 @@ describe('getMonthlySettlement', () => {
       { category_id: 'cat_food', category_name: '식비', type: 'expense', amount: 300000 },
       { category_id: 'cat_transport', category_name: '교통', type: 'expense', amount: 100000 },
     ])
-    // 2. getAccountChangesForMonth → accounts list
-    mockResolve.mockResolvedValueOnce([])
+    // 2. getAccountChangesForMonth
+    mockResolve.mockResolvedValueOnce([])    // accounts list
+    mockExecute.mockResolvedValueOnce([])    // pre-month effects
+    mockExecute.mockResolvedValueOnce([])    // month effects
     // 3. getPreviousMonthTotals → getMonthTotals
     mockResolve.mockResolvedValueOnce([])
 
@@ -103,8 +110,10 @@ describe('getMonthlySettlement', () => {
   it('전월 대비 데이터를 포함한다', async () => {
     // 1. getCategoryTotalsForMonth → db.execute
     mockExecute.mockResolvedValueOnce([])
-    // 2. getAccountChangesForMonth → accounts list
-    mockResolve.mockResolvedValueOnce([])
+    // 2. getAccountChangesForMonth
+    mockResolve.mockResolvedValueOnce([])    // accounts list
+    mockExecute.mockResolvedValueOnce([])    // pre-month effects
+    mockExecute.mockResolvedValueOnce([])    // month effects
     // 3. getPreviousMonthTotals → getMonthTotals (3월)
     mockResolve.mockResolvedValueOnce([
       { type: 'income', total: 4500000 },
@@ -125,8 +134,10 @@ describe('getMonthlySettlement', () => {
   it('1월이면 전월은 전년 12월이다', async () => {
     // 1. getCategoryTotalsForMonth → db.execute
     mockExecute.mockResolvedValueOnce([])
-    // 2. getAccountChangesForMonth → accounts list
-    mockResolve.mockResolvedValueOnce([])
+    // 2. getAccountChangesForMonth
+    mockResolve.mockResolvedValueOnce([])    // accounts list
+    mockExecute.mockResolvedValueOnce([])    // pre-month effects
+    mockExecute.mockResolvedValueOnce([])    // month effects
     // 3. getPreviousMonthTotals → getMonthTotals (전년 12월)
     mockResolve.mockResolvedValueOnce([
       { type: 'income', total: 3000000 },
@@ -144,22 +155,19 @@ describe('getMonthlySettlement', () => {
   it('계좌별 변동을 계산한다', async () => {
     // 1. getCategoryTotalsForMonth → db.execute
     mockExecute.mockResolvedValueOnce([])
-    // 2. getAccountChangesForMonth → accounts list
+    // 2. getAccountChangesForMonth:
+    //    - accounts list (initialBalance 기반 순방향 계산)
     mockResolve.mockResolvedValueOnce([
-      { id: 'acc_1', name: '신한', currentBalance: 5000000 },
+      { id: 'acc_1', name: '신한', currentBalance: 5000000, initialBalance: 0 },
     ])
-    // getAccountEffectsFrom - 4 queries per account (income, expense, transferOut, transferIn)
-    mockResolve
-      .mockResolvedValueOnce([{ total: 1000000 }])  // income from month onwards
-      .mockResolvedValueOnce([{ total: 200000 }])    // expense from month onwards
-      .mockResolvedValueOnce([{ total: 0 }])         // transfer out from month onwards
-      .mockResolvedValueOnce([{ total: 0 }])         // transfer in from month onwards
-    // getAccountMonthEffects - 4 queries (income, transferIn, expense, transferOut)
-    mockResolve
-      .mockResolvedValueOnce([{ total: 1000000 }])  // income in month
-      .mockResolvedValueOnce([{ total: 0 }])         // transfer in
-      .mockResolvedValueOnce([{ total: 200000 }])    // expense in month
-      .mockResolvedValueOnce([{ total: 0 }])         // transfer out
+    //    - pre-month effects (단일 집계 쿼리)
+    mockExecute.mockResolvedValueOnce([
+      { account_id: 'acc_1', net_effect: 4200000 },
+    ])
+    //    - month effects (단일 집계 쿼리)
+    mockExecute.mockResolvedValueOnce([
+      { account_id: 'acc_1', income: 1000000, expense: 200000 },
+    ])
     // 3. getPreviousMonthTotals → getMonthTotals
     mockResolve.mockResolvedValueOnce([])
 
@@ -170,7 +178,7 @@ describe('getMonthlySettlement', () => {
       expect(result.data.accountChanges).toHaveLength(1)
       const acc = result.data.accountChanges[0]
       expect(acc.accountName).toBe('신한')
-      // openingBalance = 5000000 - (1000000 - 200000 - 0 + 0) = 4200000
+      // openingBalance = initialBalance(0) + preEffect(4200000) = 4200000
       expect(acc.openingBalance).toBe(4200000)
       expect(acc.income).toBe(1000000)
       expect(acc.expense).toBe(200000)

@@ -32,12 +32,8 @@ export async function findAllTransactions(
 
   const total = countRows[0]?.count ?? 0
 
-  const withTags = await Promise.all(
-    rows.map(async (row) => ({
-      ...row,
-      tags: await getTransactionTagNames(row.id),
-    })),
-  )
+  // H-1: N+1 → 배치 조회 (IN절로 한 번에 태그 조회)
+  const withTags = await batchLoadTagNames(rows)
 
   return { data: withTags, total, page, limit }
 }
@@ -56,10 +52,10 @@ export async function findTransactionById(id: string) {
 
 export async function createTransaction(input: CreateTransactionInput) {
   const db = getDb()
-  const now = new Date().toISOString()
   const id = generateId()
   const inputTags = 'tags' in input ? (input.tags ?? []) : []
 
+  // C-2: 거래 생성 + 태그 + 잔액 갱신을 단일 트랜잭션으로 통합
   await db.transaction(async (tx) => {
     await tx.insert(transactions)
       .values({
@@ -72,20 +68,16 @@ export async function createTransaction(input: CreateTransactionInput) {
         toAccountId: input.toAccountId ?? null,
         date: input.date,
         memo: input.memo ?? null,
-        createdAt: now,
-        updatedAt: now,
       })
 
-    // 태그 연결
     for (const tagName of inputTags) {
-      const tagId = await findOrCreateTag(tagName)
+      const tagId = await findOrCreateTag(tagName, tx)
       await tx.insert(transactionTags)
         .values({ transactionId: id, tagId })
     }
-  })
 
-  // 계좌 잔액 갱신
-  await applyBalanceChange(input.type, input.amount, input.accountId, input.toAccountId ?? null)
+    await applyBalanceChange(input.type, input.amount, input.accountId, input.toAccountId ?? null, tx)
+  })
 
   return (await findTransactionById(id))!
 }
@@ -95,15 +87,16 @@ export async function deleteTransaction(id: string) {
   const existing = await findTransactionById(id)
   if (!existing) return false
 
-  // 잔액 복원 (역방향)
-  await reverseBalanceChange(
-    existing.type as 'income' | 'expense' | 'transfer',
-    existing.amount,
-    existing.accountId,
-    existing.toAccountId,
-  )
-
+  // C-2: 잔액 복원 + 삭제를 단일 트랜잭션으로 통합
   await db.transaction(async (tx) => {
+    await reverseBalanceChange(
+      existing.type as 'income' | 'expense' | 'transfer',
+      existing.amount,
+      existing.accountId,
+      existing.toAccountId,
+      tx,
+    )
+
     await tx.delete(transactionTags)
       .where(eq(transactionTags.transactionId, id))
     await tx.delete(transactions)
@@ -118,9 +111,9 @@ export async function updateTransaction(id: string, input: UpdateTransactionInpu
   const existing = await findTransactionById(id)
   if (!existing) return null
 
-  const now = new Date().toISOString()
   const inputTags = 'tags' in input ? input.tags : undefined
 
+  // C-2: 거래 수정 + 태그 + 잔액 보정을 단일 트랜잭션으로 통합
   await db.transaction(async (tx) => {
     await tx.update(transactions)
       .set({
@@ -132,7 +125,6 @@ export async function updateTransaction(id: string, input: UpdateTransactionInpu
         ...(input.toAccountId !== undefined && { toAccountId: input.toAccountId }),
         ...(input.date !== undefined && { date: input.date }),
         ...(input.memo !== undefined && { memo: input.memo }),
-        updatedAt: now,
       })
       .where(eq(transactions.id, id))
 
@@ -140,26 +132,27 @@ export async function updateTransaction(id: string, input: UpdateTransactionInpu
       await tx.delete(transactionTags)
         .where(eq(transactionTags.transactionId, id))
       for (const tagName of inputTags) {
-        const tagId = await findOrCreateTag(tagName)
+        const tagId = await findOrCreateTag(tagName, tx)
         await tx.insert(transactionTags)
           .values({ transactionId: id, tagId })
       }
     }
-  })
 
-  // 잔액 보정: 기존 거래 역산 후 새 거래 적용
-  await reverseBalanceChange(
-    existing.type as 'income' | 'expense' | 'transfer',
-    existing.amount,
-    existing.accountId,
-    existing.toAccountId,
-  )
-  await applyBalanceChange(
-    input.type ?? existing.type,
-    input.amount ?? existing.amount,
-    input.accountId ?? existing.accountId,
-    input.toAccountId ?? existing.toAccountId,
-  )
+    await reverseBalanceChange(
+      existing.type as 'income' | 'expense' | 'transfer',
+      existing.amount,
+      existing.accountId,
+      existing.toAccountId,
+      tx,
+    )
+    await applyBalanceChange(
+      input.type ?? existing.type,
+      input.amount ?? existing.amount,
+      input.accountId ?? existing.accountId,
+      input.toAccountId ?? existing.toAccountId,
+      tx,
+    )
+  })
 
   return (await findTransactionById(id))!
 }
@@ -214,7 +207,6 @@ export async function bulkInsertTransactions(items: BulkTransactionItem[]) {
   if (items.length === 0) return
 
   const db = getDb()
-  const now = new Date().toISOString()
 
   const values = items.map((item) => ({
     id: generateId(),
@@ -227,8 +219,6 @@ export async function bulkInsertTransactions(items: BulkTransactionItem[]) {
     recurringId: item.recurringId,
     date: item.date,
     memo: null,
-    createdAt: now,
-    updatedAt: now,
   }))
 
   // 배치 삽입 (잔액 갱신 없음 - 미래 거래이므로)
@@ -285,9 +275,42 @@ async function getTransactionTagNames(transactionId: string): Promise<string[]> 
   return rows.map((r) => r.name)
 }
 
-async function findOrCreateTag(name: string): Promise<string> {
+// H-1: N+1 → 배치 조회 (IN절로 한 번에 태그 조회 후 Map으로 매핑)
+async function batchLoadTagNames<T extends { id: string }>(
+  rows: T[],
+): Promise<(T & { tags: string[] })[]> {
+  if (rows.length === 0) return []
+
   const db = getDb()
-  const rows = await db
+  const ids = rows.map((r) => r.id)
+
+  const tagRows = await db
+    .select({
+      transactionId: transactionTags.transactionId,
+      name: tags.name,
+    })
+    .from(transactionTags)
+    .innerJoin(tags, eq(transactionTags.tagId, tags.id))
+    .where(inArray(transactionTags.transactionId, ids))
+
+  const tagMap = new Map<string, string[]>()
+  for (const row of tagRows) {
+    const existing = tagMap.get(row.transactionId) ?? []
+    existing.push(row.name)
+    tagMap.set(row.transactionId, existing)
+  }
+
+  return rows.map((row) => ({
+    ...row,
+    tags: tagMap.get(row.id) ?? [],
+  }))
+}
+
+// C-2: findOrCreateTag에 tx 지원
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function findOrCreateTag(name: string, tx?: any): Promise<string> {
+  const executor = tx ?? getDb()
+  const rows = await executor
     .select()
     .from(tags)
     .where(eq(tags.name, name))
@@ -295,51 +318,56 @@ async function findOrCreateTag(name: string): Promise<string> {
   if (rows[0]) return rows[0].id
 
   const id = generateId()
-  await db.insert(tags)
-    .values({ id, name, createdAt: new Date().toISOString() })
+  await executor.insert(tags)
+    .values({ id, name })
 
   return id
 }
 
+// C-2: applyBalanceChange / reverseBalanceChange에 tx 전달
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function applyBalanceChange(
   type: string,
   amount: number,
   accountId: string,
   toAccountId: string | null,
+  tx?: any,
 ) {
   switch (type) {
     case 'income':
-      await updateAccountBalance(accountId, amount)
+      await updateAccountBalance(accountId, amount, tx)
       break
     case 'expense':
-      await updateAccountBalance(accountId, -amount)
+      await updateAccountBalance(accountId, -amount, tx)
       break
     case 'transfer':
-      await updateAccountBalance(accountId, -amount)
+      await updateAccountBalance(accountId, -amount, tx)
       if (toAccountId) {
-        await updateAccountBalance(toAccountId, amount)
+        await updateAccountBalance(toAccountId, amount, tx)
       }
       break
   }
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function reverseBalanceChange(
   type: 'income' | 'expense' | 'transfer',
   amount: number,
   accountId: string,
   toAccountId: string | null,
+  tx?: any,
 ) {
   switch (type) {
     case 'income':
-      await updateAccountBalance(accountId, -amount)
+      await updateAccountBalance(accountId, -amount, tx)
       break
     case 'expense':
-      await updateAccountBalance(accountId, amount)
+      await updateAccountBalance(accountId, amount, tx)
       break
     case 'transfer':
-      await updateAccountBalance(accountId, amount)
+      await updateAccountBalance(accountId, amount, tx)
       if (toAccountId) {
-        await updateAccountBalance(toAccountId, -amount)
+        await updateAccountBalance(toAccountId, -amount, tx)
       }
       break
   }

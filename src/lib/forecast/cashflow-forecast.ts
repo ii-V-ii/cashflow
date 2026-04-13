@@ -24,15 +24,16 @@ export async function getHistoricalMonthlyAverages(): Promise<{
 }> {
   const db = getDb()
 
+  // M-2: SUM()::integer, 날짜: to_char 사용
   const rows = await db
     .select({
       type: transactions.type,
-      month: sql<string>`substr(${transactions.date}, 1, 7)`.as('month'),
-      total: sql<number>`sum(${transactions.amount})`.as('total'),
+      month: sql<string>`to_char(${transactions.date}, 'YYYY-MM')`.as('month'),
+      total: sql<number>`sum(${transactions.amount})::integer`.as('total'),
     })
     .from(transactions)
     .where(sql`${transactions.type} in ('income', 'expense')`)
-    .groupBy(sql`substr(${transactions.date}, 1, 7)`, transactions.type)
+    .groupBy(sql`to_char(${transactions.date}, 'YYYY-MM')`, transactions.type)
 
   const monthlyIncome = new Map<string, number>()
   const monthlyExpense = new Map<string, number>()

@@ -1,4 +1,4 @@
-import { and, eq, sql, gte } from 'drizzle-orm'
+import { and, sql, gte, lt } from 'drizzle-orm'
 import { getDb } from '@/db/index'
 import { transactions, categories, accounts } from '@/db/schema'
 import { successResponse } from '@/lib/api-response'
@@ -15,9 +15,9 @@ export async function getMonthlySettlement(
   year: number,
   month: number,
 ): Promise<ApiResponse<MonthlySettlement>> {
-  const datePrefix = `${year}-${String(month).padStart(2, '0')}`
+  const { start, end } = monthDateRange(year, month)
 
-  const categoryTotals = await getCategoryTotalsForMonth(datePrefix)
+  const categoryTotals = await getCategoryTotalsForMonth(start, end)
   const incomeByCategory = categoryTotals.filter((c) => c.type === 'income')
   const expenseByCategory = categoryTotals.filter((c) => c.type === 'expense')
 
@@ -51,8 +51,9 @@ export async function getAnnualSettlement(
   const totalExpense = months.reduce((sum, m) => sum + m.expense, 0)
   const netIncome = totalIncome - totalExpense
 
-  const yearPrefix = `${year}`
-  const categoryTotals = await getCategoryTotalsForYear(yearPrefix)
+  const yearStart = `${year}-01-01`
+  const yearEnd = `${year + 1}-01-01`
+  const categoryTotals = await getCategoryTotalsForYear(yearStart, yearEnd)
   const incomeByCategory = categoryTotals.filter((c) => c.type === 'income')
   const expenseByCategory = categoryTotals.filter((c) => c.type === 'expense')
 
@@ -76,21 +77,20 @@ interface CategoryTotalWithType extends CategorySubtotal {
   readonly type: string
 }
 
-async function getCategoryTotalsForMonth(datePrefix: string): Promise<CategoryTotalWithType[]> {
+// M-2: SUM()::integer, 날짜: 범위 쿼리
+async function getCategoryTotalsForMonth(start: string, end: string): Promise<CategoryTotalWithType[]> {
   const db = getDb()
 
-  // 소분류→대분류 롤업: COALESCE(parent_id, id)로 대분류 기준 집계
-  // parent_categories: 대분류 참조용 셀프조인
   const rows = await db.execute(sql`
     SELECT
       COALESCE(c.parent_id, c.id) AS category_id,
       COALESCE(pc.name, c.name, '미분류') AS category_name,
       t.type,
-      SUM(t.amount) AS amount
+      SUM(t.amount)::integer AS amount
     FROM transactions t
     LEFT JOIN categories c ON t.category_id = c.id
     LEFT JOIN categories pc ON c.parent_id = pc.id
-    WHERE t.date LIKE ${datePrefix + '%'}
+    WHERE t.date >= ${start} AND t.date < ${end}
       AND t.type IN ('income', 'expense')
     GROUP BY COALESCE(c.parent_id, c.id), COALESCE(pc.name, c.name, '미분류'), t.type
   `) as unknown as Array<{ category_id: string | null; category_name: string; type: string; amount: number }>
@@ -103,7 +103,7 @@ async function getCategoryTotalsForMonth(datePrefix: string): Promise<CategoryTo
   }))
 }
 
-async function getCategoryTotalsForYear(yearPrefix: string): Promise<CategoryTotalWithType[]> {
+async function getCategoryTotalsForYear(yearStart: string, yearEnd: string): Promise<CategoryTotalWithType[]> {
   const db = getDb()
 
   const rows = await db.execute(sql`
@@ -111,11 +111,11 @@ async function getCategoryTotalsForYear(yearPrefix: string): Promise<CategoryTot
       COALESCE(c.parent_id, c.id) AS category_id,
       COALESCE(pc.name, c.name, '미분류') AS category_name,
       t.type,
-      SUM(t.amount) AS amount
+      SUM(t.amount)::integer AS amount
     FROM transactions t
     LEFT JOIN categories c ON t.category_id = c.id
     LEFT JOIN categories pc ON c.parent_id = pc.id
-    WHERE substr(t.date, 1, 4) = ${yearPrefix}
+    WHERE t.date >= ${yearStart} AND t.date < ${yearEnd}
       AND t.type IN ('income', 'expense')
     GROUP BY COALESCE(c.parent_id, c.id), COALESCE(pc.name, c.name, '미분류'), t.type
   `) as unknown as Array<{ category_id: string | null; category_name: string; type: string; amount: number }>
@@ -128,152 +128,74 @@ async function getCategoryTotalsForYear(yearPrefix: string): Promise<CategoryTot
   }))
 }
 
+// H-7 + H-2: 기초잔액 순방향 계산 + 계좌별 N쿼리 → 단일 SQL 2개
 async function getAccountChangesForMonth(year: number, month: number): Promise<AccountChange[]> {
   const db = getDb()
-  const datePrefix = `${year}-${String(month).padStart(2, '0')}`
-  const monthStart = `${datePrefix}-01`
+  const { start, end } = monthDateRange(year, month)
 
   const allAccounts = await db.select().from(accounts)
 
-  const results: AccountChange[] = []
-  for (const account of allAccounts) {
-    // 해당 월 이후 모든 거래 효과를 합산하여 기초잔액 역산
-    const effectsFromMonth = await getAccountEffectsFrom(account.id, monthStart)
-    const openingBalance = account.currentBalance - effectsFromMonth
+  // 월 시작 전까지의 누적 효과 (기초잔액 = initialBalance + pre-month net effect)
+  const preMonthEffects = await db.execute(sql`
+    SELECT
+      e.account_id,
+      COALESCE(SUM(e.effect)::integer, 0) AS net_effect
+    FROM (
+      SELECT account_id,
+        CASE
+          WHEN type = 'income' THEN amount
+          WHEN type = 'expense' THEN -amount
+          WHEN type = 'transfer' THEN -amount
+        END AS effect
+      FROM transactions WHERE date < ${start} AND recurring_id IS NULL
+      UNION ALL
+      SELECT to_account_id AS account_id, amount AS effect
+      FROM transactions WHERE date < ${start} AND recurring_id IS NULL
+        AND type = 'transfer' AND to_account_id IS NOT NULL
+    ) e
+    GROUP BY e.account_id
+  `) as unknown as Array<{ account_id: string; net_effect: number }>
 
-    // 해당 월 거래만 집계
-    const monthEffects = await getAccountMonthEffects(account.id, datePrefix)
+  // 해당 월 수입/지출 집계 (transfer 포함: in→수입, out→지출)
+  const monthEffects = await db.execute(sql`
+    SELECT
+      e.account_id,
+      SUM(CASE WHEN e.effect_type = 'income' THEN e.amount ELSE 0 END)::integer AS income,
+      SUM(CASE WHEN e.effect_type = 'expense' THEN e.amount ELSE 0 END)::integer AS expense
+    FROM (
+      SELECT account_id, 'income' AS effect_type, amount
+      FROM transactions WHERE date >= ${start} AND date < ${end}
+        AND recurring_id IS NULL AND type = 'income'
+      UNION ALL
+      SELECT to_account_id AS account_id, 'income' AS effect_type, amount
+      FROM transactions WHERE date >= ${start} AND date < ${end}
+        AND recurring_id IS NULL AND type = 'transfer' AND to_account_id IS NOT NULL
+      UNION ALL
+      SELECT account_id, 'expense' AS effect_type, amount
+      FROM transactions WHERE date >= ${start} AND date < ${end}
+        AND recurring_id IS NULL AND type IN ('expense', 'transfer')
+    ) e
+    GROUP BY e.account_id
+  `) as unknown as Array<{ account_id: string; income: number; expense: number }>
 
-    const closingBalance = openingBalance + monthEffects.income - monthEffects.expense
+  const preEffectMap = new Map(preMonthEffects.map((r) => [r.account_id, r.net_effect]))
+  const monthEffectMap = new Map(monthEffects.map((r) => [r.account_id, { income: r.income, expense: r.expense }]))
 
-    results.push({
+  return allAccounts.map((account) => {
+    const preEffect = preEffectMap.get(account.id) ?? 0
+    const openingBalance = account.initialBalance + preEffect
+    const effects = monthEffectMap.get(account.id) ?? { income: 0, expense: 0 }
+    const closingBalance = openingBalance + effects.income - effects.expense
+
+    return {
       accountId: account.id,
       accountName: account.name,
       openingBalance,
-      income: monthEffects.income,
-      expense: monthEffects.expense,
+      income: effects.income,
+      expense: effects.expense,
       closingBalance,
-    })
-  }
-
-  return results
-}
-
-async function getAccountEffectsFrom(accountId: string, fromDate: string): Promise<number> {
-  const db = getDb()
-
-  // income to this account (from fromDate onwards)
-  const incomeRows = await db
-    .select({ total: sql<number>`coalesce(sum(${transactions.amount}), 0)`.as('total') })
-    .from(transactions)
-    .where(
-      and(
-        eq(transactions.accountId, accountId),
-        eq(transactions.type, 'income'),
-        gte(transactions.date, fromDate),
-      ),
-    )
-
-  // expense from this account
-  const expenseRows = await db
-    .select({ total: sql<number>`coalesce(sum(${transactions.amount}), 0)`.as('total') })
-    .from(transactions)
-    .where(
-      and(
-        eq(transactions.accountId, accountId),
-        eq(transactions.type, 'expense'),
-        gte(transactions.date, fromDate),
-      ),
-    )
-
-  // transfer out from this account
-  const transferOutRows = await db
-    .select({ total: sql<number>`coalesce(sum(${transactions.amount}), 0)`.as('total') })
-    .from(transactions)
-    .where(
-      and(
-        eq(transactions.accountId, accountId),
-        eq(transactions.type, 'transfer'),
-        gte(transactions.date, fromDate),
-      ),
-    )
-
-  // transfer in to this account
-  const transferInRows = await db
-    .select({ total: sql<number>`coalesce(sum(${transactions.amount}), 0)`.as('total') })
-    .from(transactions)
-    .where(
-      and(
-        eq(transactions.toAccountId, accountId),
-        eq(transactions.type, 'transfer'),
-        gte(transactions.date, fromDate),
-      ),
-    )
-
-  const income = incomeRows[0]?.total ?? 0
-  const expense = expenseRows[0]?.total ?? 0
-  const transferOut = transferOutRows[0]?.total ?? 0
-  const transferIn = transferInRows[0]?.total ?? 0
-
-  return income - expense - transferOut + transferIn
-}
-
-async function getAccountMonthEffects(
-  accountId: string,
-  datePrefix: string,
-): Promise<{ income: number; expense: number }> {
-  const db = getDb()
-
-  // 이 계좌의 수입 (income + transfer in)
-  const incomeRows = await db
-    .select({ total: sql<number>`coalesce(sum(${transactions.amount}), 0)`.as('total') })
-    .from(transactions)
-    .where(
-      and(
-        eq(transactions.accountId, accountId),
-        eq(transactions.type, 'income'),
-        sql`${transactions.date} like ${datePrefix + '%'}`,
-      ),
-    )
-
-  const transferInRows = await db
-    .select({ total: sql<number>`coalesce(sum(${transactions.amount}), 0)`.as('total') })
-    .from(transactions)
-    .where(
-      and(
-        eq(transactions.toAccountId, accountId),
-        eq(transactions.type, 'transfer'),
-        sql`${transactions.date} like ${datePrefix + '%'}`,
-      ),
-    )
-
-  // 이 계좌의 지출 (expense + transfer out)
-  const expenseRows = await db
-    .select({ total: sql<number>`coalesce(sum(${transactions.amount}), 0)`.as('total') })
-    .from(transactions)
-    .where(
-      and(
-        eq(transactions.accountId, accountId),
-        eq(transactions.type, 'expense'),
-        sql`${transactions.date} like ${datePrefix + '%'}`,
-      ),
-    )
-
-  const transferOutRows = await db
-    .select({ total: sql<number>`coalesce(sum(${transactions.amount}), 0)`.as('total') })
-    .from(transactions)
-    .where(
-      and(
-        eq(transactions.accountId, accountId),
-        eq(transactions.type, 'transfer'),
-        sql`${transactions.date} like ${datePrefix + '%'}`,
-      ),
-    )
-
-  return {
-    income: (incomeRows[0]?.total ?? 0) + (transferInRows[0]?.total ?? 0),
-    expense: (expenseRows[0]?.total ?? 0) + (transferOutRows[0]?.total ?? 0),
-  }
+    }
+  })
 }
 
 async function getPreviousMonthTotals(
@@ -282,25 +204,28 @@ async function getPreviousMonthTotals(
 ): Promise<{ totalIncome: number; totalExpense: number; netIncome: number } | null> {
   const prevMonth = month === 1 ? 12 : month - 1
   const prevYear = month === 1 ? year - 1 : year
-  const datePrefix = `${prevYear}-${String(prevMonth).padStart(2, '0')}`
+  const { start, end } = monthDateRange(prevYear, prevMonth)
 
-  return getMonthTotals(datePrefix)
+  return getMonthTotals(start, end)
 }
 
+// M-2: SUM()::integer, 날짜: 범위 쿼리
 async function getMonthTotals(
-  datePrefix: string,
+  start: string,
+  end: string,
 ): Promise<{ totalIncome: number; totalExpense: number; netIncome: number } | null> {
   const db = getDb()
 
   const rows = await db
     .select({
       type: transactions.type,
-      total: sql<number>`sum(${transactions.amount})`.as('total'),
+      total: sql<number>`sum(${transactions.amount})::integer`.as('total'),
     })
     .from(transactions)
     .where(
       and(
-        sql`${transactions.date} like ${datePrefix + '%'}`,
+        gte(transactions.date, start),
+        lt(transactions.date, end),
         sql`${transactions.type} in ('income', 'expense')`,
       ),
     )
@@ -320,21 +245,25 @@ async function getMonthTotals(
 
 async function getMonthlyTotalsForYear(year: number): Promise<MonthlyRow[]> {
   const db = getDb()
+  const yearStart = `${year}-01-01`
+  const yearEnd = `${year + 1}-01-01`
 
+  // M-2: SUM()::integer, 날짜: EXTRACT + 범위 쿼리
   const rows = await db
     .select({
-      month: sql<number>`cast(substr(${transactions.date}, 6, 2) as integer)`.as('month'),
+      month: sql<number>`EXTRACT(MONTH FROM ${transactions.date})::integer`.as('month'),
       type: transactions.type,
-      total: sql<number>`sum(${transactions.amount})`.as('total'),
+      total: sql<number>`sum(${transactions.amount})::integer`.as('total'),
     })
     .from(transactions)
     .where(
       and(
-        sql`substr(${transactions.date}, 1, 4) = ${String(year)}`,
+        gte(transactions.date, yearStart),
+        lt(transactions.date, yearEnd),
         sql`${transactions.type} in ('income', 'expense')`,
       ),
     )
-    .groupBy(sql`substr(${transactions.date}, 6, 2)`, transactions.type)
+    .groupBy(sql`EXTRACT(MONTH FROM ${transactions.date})`, transactions.type)
 
   const monthMap = new Map<number, { income: number; expense: number }>()
   for (const row of rows) {
@@ -360,16 +289,20 @@ async function getYearTotals(
   year: number,
 ): Promise<{ totalIncome: number; totalExpense: number; netIncome: number } | null> {
   const db = getDb()
+  const yearStart = `${year}-01-01`
+  const yearEnd = `${year + 1}-01-01`
 
+  // M-2: SUM()::integer, 날짜: 범위 쿼리
   const rows = await db
     .select({
       type: transactions.type,
-      total: sql<number>`sum(${transactions.amount})`.as('total'),
+      total: sql<number>`sum(${transactions.amount})::integer`.as('total'),
     })
     .from(transactions)
     .where(
       and(
-        sql`substr(${transactions.date}, 1, 4) = ${String(year)}`,
+        gte(transactions.date, yearStart),
+        lt(transactions.date, yearEnd),
         sql`${transactions.type} in ('income', 'expense')`,
       ),
     )
@@ -385,4 +318,14 @@ async function getYearTotals(
   }
 
   return { totalIncome, totalExpense, netIncome: totalIncome - totalExpense }
+}
+
+// === Date Helpers ===
+
+function monthDateRange(year: number, month: number) {
+  const start = `${year}-${String(month).padStart(2, '0')}-01`
+  const nextMonth = month === 12 ? 1 : month + 1
+  const nextYear = month === 12 ? year + 1 : year
+  const end = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`
+  return { start, end }
 }

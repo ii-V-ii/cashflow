@@ -46,7 +46,11 @@ export async function getAssetWithValuationsService(id: string): Promise<ApiResp
     return errorResponse('NOT_FOUND', '자산을 찾을 수 없습니다')
   }
   const valuations = await getValuations(id)
-  return successResponse({ ...asset, valuations })
+  return successResponse({
+    ...asset,
+    metadata: (asset.metadata as Record<string, unknown>) ?? null,
+    valuations,
+  })
 }
 
 export async function createAssetService(input: unknown): Promise<ApiResponse<Awaited<ReturnType<typeof findAssetById>>>> {

@@ -70,7 +70,6 @@ export async function getNextSortOrder(parentId: string | null, type: 'income' |
 
 export async function createCategory(input: CreateCategoryInput) {
   const db = getDb()
-  const now = new Date().toISOString()
   const id = generateId()
   const sortOrder = input.sortOrder ?? await getNextSortOrder(input.parentId ?? null, input.type)
 
@@ -83,8 +82,6 @@ export async function createCategory(input: CreateCategoryInput) {
       color: input.color ?? null,
       parentId: input.parentId ?? null,
       sortOrder,
-      createdAt: now,
-      updatedAt: now,
     })
 
   return (await findCategoryById(id))!
@@ -95,8 +92,6 @@ export async function updateCategory(id: string, input: UpdateCategoryInput) {
   const existing = await findCategoryById(id)
   if (!existing) return null
 
-  const now = new Date().toISOString()
-
   await db.update(categories)
     .set({
       ...(input.name !== undefined && { name: input.name }),
@@ -105,7 +100,6 @@ export async function updateCategory(id: string, input: UpdateCategoryInput) {
       ...(input.color !== undefined && { color: input.color }),
       ...(input.parentId !== undefined && { parentId: input.parentId }),
       ...(input.sortOrder !== undefined && { sortOrder: input.sortOrder }),
-      updatedAt: now,
     })
     .where(eq(categories.id, id))
 

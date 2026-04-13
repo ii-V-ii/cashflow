@@ -15,6 +15,13 @@
       "when": 1776075066824,
       "tag": "0001_mighty_falcon",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1776078659267,
+      "tag": "0002_busy_umar",
+      "breakpoints": true
     }
   ]
 }

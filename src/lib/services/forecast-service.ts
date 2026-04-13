@@ -7,6 +7,7 @@ import {
   findForecastResultsByScenarioId,
   saveForecastResults,
   findAllAccounts,
+  findAllAssets,
 } from '@/db/repositories'
 import {
   createForecastScenarioSchema,
@@ -14,7 +15,7 @@ import {
   runForecastSchema,
 } from '@/lib/validators'
 import { projectCashflow } from '@/lib/forecast/cashflow-forecast'
-import { projectAssets } from '@/lib/forecast/asset-forecast'
+import { projectAssetsFromList } from '@/lib/forecast/asset-forecast'
 import { successResponse, errorResponse } from '@/lib/api-response'
 import type { ApiResponse, ForecastAssumptions, ForecastSummary } from '@/types'
 
@@ -96,9 +97,7 @@ export async function runForecastService(
     return errorResponse('NOT_FOUND', '예측 시나리오를 찾을 수 없습니다')
   }
 
-  const assumptions: ForecastAssumptions | null = scenario.assumptions
-    ? JSON.parse(scenario.assumptions)
-    : null
+  const assumptions: ForecastAssumptions | null = (scenario.assumptions as ForecastAssumptions) ?? null
 
   // 캐시플로우 예측
   const cashflowProjections = await projectCashflow(
@@ -114,38 +113,39 @@ export async function runForecastService(
     0,
   )
 
-  // 결과 생성 (누적 잔액 + 자산 투영)
+  // M-10: 자산 목록을 루프 밖에서 한번 조회
+  const activeAssets = await findAllAssets(true)
+
+  // 결과 생성 (누적 잔액 + 자산 투영) - 순차 처리로 cumulativeBalance 정합성 보장
   let cumulativeBalance = currentTotalBalance
-  const resultRows = await Promise.all(
-    cashflowProjections.map(async (proj, index) => {
-      const netFlow = proj.projectedIncome - proj.projectedExpense
-      cumulativeBalance += netFlow
+  const resultRows = cashflowProjections.map((proj, index) => {
+    const netFlow = proj.projectedIncome - proj.projectedExpense
+    cumulativeBalance += netFlow
 
-      // 해당 월까지의 자산 투영
-      const monthsFromStart = index + 1
-      const { totalProjectedValue, projections: assetProjections } = await projectAssets(
-        monthsFromStart,
-        assumptions,
-      )
+    const monthsFromStart = index + 1
+    const { totalProjectedValue, projections: assetProjections } = projectAssetsFromList(
+      activeAssets,
+      monthsFromStart,
+      assumptions,
+    )
 
-      const projectedNetWorth = cumulativeBalance + totalProjectedValue
+    const projectedNetWorth = cumulativeBalance + totalProjectedValue
 
-      return {
-        date: proj.date,
-        projectedIncome: proj.projectedIncome,
-        projectedExpense: proj.projectedExpense,
-        projectedBalance: cumulativeBalance,
-        projectedNetWorth,
-        details: JSON.stringify({
-          recurringIncome: proj.recurringIncome,
-          recurringExpense: proj.recurringExpense,
-          historicalIncome: proj.historicalIncome,
-          historicalExpense: proj.historicalExpense,
-          assetProjections,
-        }),
-      }
-    }),
-  )
+    return {
+      date: proj.date,
+      projectedIncome: proj.projectedIncome,
+      projectedExpense: proj.projectedExpense,
+      projectedBalance: cumulativeBalance,
+      projectedNetWorth,
+      details: {
+        recurringIncome: proj.recurringIncome,
+        recurringExpense: proj.recurringExpense,
+        historicalIncome: proj.historicalIncome,
+        historicalExpense: proj.historicalExpense,
+        assetProjections,
+      },
+    }
+  })
 
   // 결과 저장
   await saveForecastResults(scenario.id, resultRows)
@@ -153,16 +153,11 @@ export async function runForecastService(
   // 저장된 결과 조회하여 반환
   const savedResults = await findForecastResultsByScenarioId(scenario.id)
 
-  const parsedScenario = {
-    ...scenario,
-    assumptions,
-  }
-
   return successResponse({
-    scenario: parsedScenario,
+    scenario: { ...scenario, assumptions },
     results: savedResults.map((r) => ({
       ...r,
-      details: r.details ? JSON.parse(r.details) : null,
+      details: r.details as ForecastSummary['results'][number]['details'],
     })),
   })
 }
@@ -179,18 +174,14 @@ export async function getForecastResultsService(
 
   const results = await findForecastResultsByScenarioId(scenarioId)
 
-  const parsedScenario = {
-    ...scenario,
-    assumptions: scenario.assumptions
-      ? JSON.parse(scenario.assumptions)
-      : null,
-  }
-
   return successResponse({
-    scenario: parsedScenario,
+    scenario: {
+      ...scenario,
+      assumptions: (scenario.assumptions as ForecastAssumptions) ?? null,
+    },
     results: results.map((r) => ({
       ...r,
-      details: r.details ? JSON.parse(r.details) : null,
+      details: r.details as ForecastSummary['results'][number]['details'],
     })),
   })
 }

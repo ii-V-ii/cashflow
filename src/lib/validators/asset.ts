@@ -19,7 +19,7 @@ export const createAssetSchema = z.object({
   institution: z.string().max(100).nullable().optional().default(null),
   memo: z.string().max(500).nullable().optional().default(null),
   isActive: z.boolean().optional().default(true),
-  metadata: z.string().nullable().optional().default(null),
+  metadata: z.record(z.string(), z.unknown()).nullable().optional().default(null),
 })
 
 export const updateAssetSchema = createAssetSchema.partial()

@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { getDb } from '../index'
 import { accounts } from '../schema'
 import { generateId } from '../../lib/utils'
@@ -20,7 +20,6 @@ export async function findAccountById(id: string) {
 
 export async function createAccount(input: CreateAccountInput) {
   const db = getDb()
-  const now = new Date().toISOString()
   const id = generateId()
 
   await db.insert(accounts)
@@ -28,11 +27,10 @@ export async function createAccount(input: CreateAccountInput) {
       id,
       name: input.name,
       type: input.type,
+      initialBalance: input.balance ?? 0,
       currentBalance: input.balance ?? 0,
       color: input.color ?? null,
       icon: input.icon ?? null,
-      createdAt: now,
-      updatedAt: now,
     })
 
   return (await findAccountById(id))!
@@ -43,8 +41,6 @@ export async function updateAccount(id: string, input: UpdateAccountInput) {
   const existing = await findAccountById(id)
   if (!existing) return null
 
-  const now = new Date().toISOString()
-
   await db.update(accounts)
     .set({
       ...(input.name !== undefined && { name: input.name }),
@@ -52,7 +48,6 @@ export async function updateAccount(id: string, input: UpdateAccountInput) {
       ...(input.balance !== undefined && { currentBalance: input.balance }),
       ...(input.color !== undefined && { color: input.color }),
       ...(input.icon !== undefined && { icon: input.icon }),
-      updatedAt: now,
     })
     .where(eq(accounts.id, id))
 
@@ -68,20 +63,11 @@ export async function deleteAccount(id: string) {
   return true
 }
 
-export async function updateAccountBalance(id: string, delta: number) {
-  const db = getDb()
-  const account = await findAccountById(id)
-  if (!account) return null
-
-  const now = new Date().toISOString()
-  const newBalance = account.currentBalance + delta
-
-  await db.update(accounts)
-    .set({
-      currentBalance: newBalance,
-      updatedAt: now,
-    })
+// C-1: 원자적 잔액 갱신 (SELECT+계산+UPDATE 경쟁조건 제거)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function updateAccountBalance(id: string, delta: number, tx?: any) {
+  const executor = tx ?? getDb()
+  await executor.update(accounts)
+    .set({ currentBalance: sql`current_balance + ${delta}` })
     .where(eq(accounts.id, id))
-
-  return (await findAccountById(id))!
 }

@@ -47,11 +47,10 @@ export async function findRecurringTransactionById(id: string) {
 
 export async function createRecurringTransaction(input: CreateRecurringTransactionInput) {
   const db = getDb()
-  const now = new Date().toISOString()
   const id = generateId()
 
   // nextDate를 오늘 이후로 보정
-  const today = now.slice(0, 10)
+  const today = new Date().toISOString().slice(0, 10)
   let nextDate = input.startDate
   const freq = (input.frequency ?? 'monthly') as 'daily' | 'weekly' | 'monthly' | 'yearly'
   const intv = input.interval ?? 1
@@ -74,8 +73,6 @@ export async function createRecurringTransaction(input: CreateRecurringTransacti
       endDate: input.endDate ?? null,
       nextDate,
       isActive: true,
-      createdAt: now,
-      updatedAt: now,
     })
 
   return (await findRecurringTransactionById(id))!
@@ -85,8 +82,6 @@ export async function updateRecurringTransaction(id: string, input: UpdateRecurr
   const db = getDb()
   const existing = await findRecurringTransactionById(id)
   if (!existing) return null
-
-  const now = new Date().toISOString()
 
   await db.update(recurringTransactions)
     .set({
@@ -101,7 +96,6 @@ export async function updateRecurringTransaction(id: string, input: UpdateRecurr
       ...(input.startDate !== undefined && { startDate: input.startDate }),
       ...(input.endDate !== undefined && { endDate: input.endDate }),
       ...(input.isActive !== undefined && { isActive: input.isActive }),
-      updatedAt: now,
     })
     .where(eq(recurringTransactions.id, id))
 
@@ -110,17 +104,15 @@ export async function updateRecurringTransaction(id: string, input: UpdateRecurr
 
 export async function updateNextDate(id: string, nextDate: string) {
   const db = getDb()
-  const now = new Date().toISOString()
   await db.update(recurringTransactions)
-    .set({ nextDate, updatedAt: now })
+    .set({ nextDate })
     .where(eq(recurringTransactions.id, id))
 }
 
 export async function deactivateRecurringTransaction(id: string) {
   const db = getDb()
-  const now = new Date().toISOString()
   await db.update(recurringTransactions)
-    .set({ isActive: false, updatedAt: now })
+    .set({ isActive: false })
     .where(eq(recurringTransactions.id, id))
 }
 

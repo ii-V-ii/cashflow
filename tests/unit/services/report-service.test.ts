@@ -29,7 +29,7 @@ vi.mock('@/db/index', () => ({
 vi.mock('@/db/schema', () => ({
   transactions: { date: 'date', type: 'type', amount: 'amount', categoryId: 'categoryId', accountId: 'accountId', toAccountId: 'toAccountId' },
   categories: { id: 'id', name: 'name', type: 'type' },
-  accounts: { id: 'id', name: 'name', currentBalance: 'currentBalance' },
+  accounts: { id: 'id', name: 'name', currentBalance: 'currentBalance', initialBalance: 'initialBalance' },
 }))
 
 vi.mock('drizzle-orm', () => {
@@ -40,6 +40,7 @@ vi.mock('drizzle-orm', () => {
     eq: vi.fn((a: unknown, b: unknown) => [a, b]),
     sql: makeSql,
     gte: vi.fn((a: unknown, b: unknown) => [a, b]),
+    lt: vi.fn((a: unknown, b: unknown) => [a, b]),
   }
 })
 
@@ -164,38 +165,41 @@ describe('getCategoryAnalysis', () => {
 describe('getNetWorthTrend', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2026, 3, 13)) // 2026-04-13
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it('최근 N개월 순자산 추이를 반환한다', async () => {
-    // 계좌 목록
+    // H-3: 단일 쿼리 + 누적합 방식
+    // 계좌 목록 (initialBalance 기반)
     mockResolve.mockResolvedValueOnce([
-      { id: 'acc_1', name: '신한', currentBalance: 10000000 },
-      { id: 'acc_2', name: '국민', currentBalance: 5000000 },
+      { id: 'acc_1', name: '신한', currentBalance: 10000000, initialBalance: 13000000 },
+      { id: 'acc_2', name: '국민', currentBalance: 5000000, initialBalance: 500000 },
     ])
+    // totalInitialBalance = 13500000
 
-    // monthList: [2개월전, 1개월전, 현재] 순서로 순회
-    // 각 월에 대해 getTotalEffectsFrom → income, expense 순으로 mockResolve 호출
-    // 2개월 전 (가장 오래된)
-    mockResolve.mockResolvedValueOnce([{ total: 2000000 }])  // income after 2 months ago's next
-    mockResolve.mockResolvedValueOnce([{ total: 500000 }])   // expense after 2 months ago's next
-    // 1개월 전
-    mockResolve.mockResolvedValueOnce([{ total: 1000000 }])  // income after prev month's next
-    mockResolve.mockResolvedValueOnce([{ total: 200000 }])   // expense after prev month's next
-    // 현재 월
-    mockResolve.mockResolvedValueOnce([{ total: 0 }])     // income after current month's next
-    mockResolve.mockResolvedValueOnce([{ total: 0 }])     // expense after current month's next
+    // 단일 쿼리: 월별 순효과 (db.execute)
+    // monthList = ['2026-02', '2026-03', '2026-04']
+    mockExecute.mockResolvedValueOnce([
+      { year_month: '2026-03', net_effect: 700000 },
+      { year_month: '2026-04', net_effect: 800000 },
+      // 2026-02에는 거래 없음 → 잔액 유지
+    ])
 
     const result = await getNetWorthTrend(3)
 
     expect(result.success).toBe(true)
     if (result.success) {
       expect(result.data).toHaveLength(3)
-      // 현재 총잔액 15000000
-      // 첫 번째 (가장 오래된): 15000000 - (2000000 - 500000) = 13500000
+      // 2026-02: initialBalance(13500000) + 0 = 13500000
       expect(result.data[0].totalBalance).toBe(13500000)
-      // 두 번째: 15000000 - (1000000 - 200000) = 14200000
+      // 2026-03: 13500000 + 700000 = 14200000
       expect(result.data[1].totalBalance).toBe(14200000)
-      // 세 번째 (현재): 15000000 - 0 = 15000000
+      // 2026-04: 14200000 + 800000 = 15000000
       expect(result.data[2].totalBalance).toBe(15000000)
     }
   })

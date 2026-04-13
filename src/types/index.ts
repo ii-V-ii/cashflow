@@ -14,8 +14,8 @@ export interface Transaction {
   readonly date: string // YYYY-MM-DD
   readonly memo: string | null
   readonly tags: readonly string[]
-  readonly createdAt: string
-  readonly updatedAt: string
+  readonly createdAt: Date
+  readonly updatedAt: Date
 }
 
 // === Account ===
@@ -31,8 +31,8 @@ export interface Account {
   readonly icon: string | null
   readonly isActive: boolean
   readonly sortOrder: number
-  readonly createdAt: string
-  readonly updatedAt: string
+  readonly createdAt: Date
+  readonly updatedAt: Date
 }
 
 // === Category ===
@@ -48,8 +48,8 @@ export interface Category {
   readonly parentId: string | null
   readonly sortOrder: number
   readonly isActive: boolean
-  readonly createdAt: string
-  readonly updatedAt: string
+  readonly createdAt: Date
+  readonly updatedAt: Date
 }
 
 // === Category (Grouped) ===
@@ -66,8 +66,8 @@ export interface AssetCategoryCustom {
   readonly icon: string | null
   readonly color: string | null
   readonly sortOrder: number
-  readonly createdAt: string
-  readonly updatedAt: string
+  readonly createdAt: Date
+  readonly updatedAt: Date
 }
 
 // === Tag ===
@@ -76,7 +76,7 @@ export interface Tag {
   readonly id: string
   readonly name: string
   readonly color: string | null
-  readonly createdAt: string
+  readonly createdAt: Date
 }
 
 // === Budget ===
@@ -89,8 +89,8 @@ export interface Budget {
   readonly totalIncome: number // KRW 정수
   readonly totalExpense: number // KRW 정수
   readonly memo: string | null
-  readonly createdAt: string
-  readonly updatedAt: string
+  readonly createdAt: Date
+  readonly updatedAt: Date
 }
 
 export interface BudgetItem {
@@ -99,8 +99,8 @@ export interface BudgetItem {
   readonly categoryId: string
   readonly plannedAmount: number // KRW 정수
   readonly memo: string | null
-  readonly createdAt: string
-  readonly updatedAt: string
+  readonly createdAt: Date
+  readonly updatedAt: Date
 }
 
 export interface BudgetItemWithActual extends BudgetItem {
@@ -269,9 +269,9 @@ export interface Asset {
   readonly institution: string | null
   readonly memo: string | null
   readonly isActive: boolean
-  readonly metadata: string | null // JSON
-  readonly createdAt: string
-  readonly updatedAt: string
+  readonly metadata: Record<string, unknown> | null
+  readonly createdAt: Date
+  readonly updatedAt: Date
 }
 
 export interface AssetValuation {
@@ -281,8 +281,8 @@ export interface AssetValuation {
   readonly value: number // KRW 정수
   readonly source: 'manual' | 'api' | 'estimate'
   readonly memo: string | null
-  readonly createdAt: string
-  readonly updatedAt: string
+  readonly createdAt: Date
+  readonly updatedAt: Date
 }
 
 export interface InvestmentReturn {
@@ -296,8 +296,8 @@ export interface InvestmentReturn {
   readonly unrealizedGain: number // KRW 정수
   readonly returnRate: number | null // 수익률 (%)
   readonly memo: string | null
-  readonly createdAt: string
-  readonly updatedAt: string
+  readonly createdAt: Date
+  readonly updatedAt: Date
 }
 
 export interface AssetWithValuations extends Asset {
@@ -358,8 +358,8 @@ export interface RecurringTransaction {
   readonly endDate: string | null
   readonly nextDate: string // YYYY-MM-DD
   readonly isActive: boolean
-  readonly createdAt: string
-  readonly updatedAt: string
+  readonly createdAt: Date
+  readonly updatedAt: Date
 }
 
 // === Forecast ===
@@ -378,8 +378,8 @@ export interface ForecastScenario {
   readonly assumptions: ForecastAssumptions | null
   readonly startDate: string // YYYY-MM-DD
   readonly endDate: string // YYYY-MM-DD
-  readonly createdAt: string
-  readonly updatedAt: string
+  readonly createdAt: Date
+  readonly updatedAt: Date
 }
 
 export interface ForecastResult {
@@ -391,8 +391,8 @@ export interface ForecastResult {
   readonly projectedBalance: number // KRW 정수
   readonly projectedNetWorth: number // KRW 정수
   readonly details: ForecastResultDetails | null
-  readonly createdAt: string
-  readonly updatedAt: string
+  readonly createdAt: Date
+  readonly updatedAt: Date
 }
 
 export interface ForecastResultDetails {

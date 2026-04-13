@@ -69,7 +69,6 @@ export async function findInvestmentReturnsByAssetAndPeriod(
 
 export async function createInvestmentReturn(input: CreateInvestmentReturnInput) {
   const db = getDb()
-  const now = new Date().toISOString()
   const id = generateId()
 
   await db.insert(investmentReturns)
@@ -84,8 +83,6 @@ export async function createInvestmentReturn(input: CreateInvestmentReturnInput)
       unrealizedGain: input.unrealizedGain ?? 0,
       returnRate: input.returnRate ?? null,
       memo: input.memo ?? null,
-      createdAt: now,
-      updatedAt: now,
     })
 
   return (await findInvestmentReturnById(id))!
@@ -96,8 +93,6 @@ export async function updateInvestmentReturn(id: string, input: UpdateInvestment
   const existing = await findInvestmentReturnById(id)
   if (!existing) return null
 
-  const now = new Date().toISOString()
-
   await db.update(investmentReturns)
     .set({
       ...(input.investedAmount !== undefined && { investedAmount: input.investedAmount }),
@@ -106,7 +101,6 @@ export async function updateInvestmentReturn(id: string, input: UpdateInvestment
       ...(input.unrealizedGain !== undefined && { unrealizedGain: input.unrealizedGain }),
       ...(input.returnRate !== undefined && { returnRate: input.returnRate }),
       ...(input.memo !== undefined && { memo: input.memo }),
-      updatedAt: now,
     })
     .where(eq(investmentReturns.id, id))
 
