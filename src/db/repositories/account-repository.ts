@@ -66,9 +66,26 @@ export async function updateAccount(id: string, input: UpdateAccountInput) {
     })
     .where(eq(accounts.id, id))
 
-  // C-3: balance 변경 시 연결 자산 동기화
-  if (input.balance !== undefined && input.balance !== existing.currentBalance) {
+  // C-3: balance 또는 assetId 변경 시 연결 자산 동기화
+  if (
+    (input.balance !== undefined && input.balance !== existing.currentBalance) ||
+    (input.assetId !== undefined && input.assetId !== existing.assetId)
+  ) {
+    // 새 자산 동기화
     await syncAssetFromAccount(id)
+    // 이전 자산이 있었으면 이전 자산도 재계산 (연결 해제된 계좌 잔액 제거)
+    if (existing.assetId && existing.assetId !== input.assetId) {
+      // 이전 자산에 연결된 다른 계좌가 있으면 재계산
+      const db = getDb()
+      const otherAccounts = await db.select().from(accounts).where(eq(accounts.assetId, existing.assetId))
+      if (otherAccounts.length > 0) {
+        await syncAssetFromAccount(otherAccounts[0].id)
+      } else {
+        // 연결된 계좌가 없으면 자산 가치를 0으로 (또는 유지)
+        const { assets: assetsTable } = await import('../schema')
+        await db.update(assetsTable).set({ currentValue: 0 }).where(eq(assetsTable.id, existing.assetId))
+      }
+    }
   }
 
   return (await findAccountById(id))!

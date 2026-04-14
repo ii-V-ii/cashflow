@@ -2,6 +2,23 @@
 
 import { useState, useCallback, useMemo } from "react";
 import { Plus, Pencil, Trash2, BarChart3, Link2, Unlink } from "lucide-react";
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  rectSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +40,7 @@ import {
   useCreateAccount,
   useUpdateAccount,
   useDeleteAccount,
+  useReorderAccounts,
 } from "@/hooks/use-accounts";
 import { useAssets } from "@/hooks/use-assets";
 import { formatKRW } from "@/lib/format";
@@ -47,6 +65,12 @@ export default function AccountsPage() {
   const { data: accounts, isLoading } = useAccounts();
   const { data: assets } = useAssets();
   const createMutation = useCreateAccount();
+  const reorderMutation = useReorderAccounts();
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   const assetsByAccount = useMemo(() => {
     if (!assets || !accounts) return new Map<string, Asset[]>();
@@ -71,11 +95,8 @@ export default function AccountsPage() {
   const [linkAccountId, setLinkAccountId] = useState<string | null>(null);
   const [selectedAssetId, setSelectedAssetId] = useState("");
 
-  // 미연결 자산 (어떤 계좌에서도 참조하지 않는 자산)
-  const unlinkedAssets = useMemo(() => {
-    const linkedIds = new Set((accounts ?? []).filter(a => a.assetId).map(a => a.assetId!));
-    return (assets ?? []).filter((a) => !linkedIds.has(a.id));
-  }, [assets, accounts]);
+  // 연결 가능한 자산 (1자산:N계좌이므로 모든 자산 표시)
+  const linkableAssets = useMemo(() => assets ?? [], [assets]);
 
   const handleLinkAsset = useCallback(() => {
     if (!linkAccountId || !selectedAssetId) return;
@@ -107,6 +128,22 @@ export default function AccountsPage() {
     }
     return map;
   }, [accounts]);
+
+  const handleDragEnd = useCallback(
+    (type: AccountType, event: DragEndEvent) => {
+      const { active, over } = event;
+      if (!over || active.id === over.id) return;
+      const list = grouped.get(type);
+      if (!list) return;
+      const oldIndex = list.findIndex((a) => a.id === active.id);
+      const newIndex = list.findIndex((a) => a.id === over.id);
+      if (oldIndex === -1 || newIndex === -1) return;
+      const reordered = arrayMove(list, oldIndex, newIndex);
+      const items = reordered.map((a, i) => ({ id: a.id, sortOrder: i }));
+      reorderMutation.mutate(items);
+    },
+    [grouped, reorderMutation],
+  );
 
   const totalBalance = useMemo(
     () => (accounts ?? []).reduce((sum, a) => sum + a.currentBalance, 0),
@@ -195,9 +232,15 @@ export default function AccountsPage() {
                 <h2 className="mb-3 text-sm font-medium text-muted-foreground">
                   {ACCOUNT_TYPE_LABELS[type]}
                 </h2>
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={(e) => handleDragEnd(type, e)}
+                >
+                  <SortableContext items={list.map((a) => a.id)} strategy={rectSortingStrategy}>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {list.map((account) => (
-                    <Card key={account.id} size="sm">
+                    <SortableAccountCard key={account.id} id={account.id}>
                       <CardHeader>
                         <CardTitle className="flex items-center gap-2">
                           {account.color && (
@@ -268,19 +311,23 @@ export default function AccountsPage() {
                             </Button>
                           </div>
                         ))}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="w-full text-xs text-muted-foreground"
-                          onClick={() => { setLinkAccountId(account.id); setSelectedAssetId(""); }}
-                        >
-                          <Link2 className="size-3 mr-1" />
-                          자산 연결
-                        </Button>
+                        {!account.assetId && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="w-full text-xs text-muted-foreground"
+                            onClick={() => { setLinkAccountId(account.id); setSelectedAssetId(""); }}
+                          >
+                            <Link2 className="size-3 mr-1" />
+                            자산 연결
+                          </Button>
+                        )}
                       </CardContent>
-                    </Card>
+                    </SortableAccountCard>
                   ))}
                 </div>
+                  </SortableContext>
+                </DndContext>
               </section>
             );
           })}
@@ -314,7 +361,7 @@ export default function AccountsPage() {
           <DialogHeader>
             <DialogTitle>자산 연결</DialogTitle>
           </DialogHeader>
-          {unlinkedAssets.length === 0 ? (
+          {linkableAssets.length === 0 ? (
             <p className="text-sm text-muted-foreground py-4">
               연결 가능한 자산이 없습니다. 먼저 자산을 추가하세요.
             </p>
@@ -327,7 +374,7 @@ export default function AccountsPage() {
                 onChange={(e) => setSelectedAssetId(e.target.value)}
               >
                 <option value="">선택하세요</option>
-                {unlinkedAssets.map((asset) => (
+                {linkableAssets.map((asset) => (
                   <option key={asset.id} value={asset.id}>
                     {asset.name}
                   </option>
@@ -352,6 +399,37 @@ export default function AccountsPage() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function SortableAccountCard({ id, children }: { id: string; children: React.ReactNode }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    position: "relative",
+  };
+
+  return (
+    <Card
+      ref={setNodeRef}
+      style={style}
+      size="sm"
+      className="cursor-grab active:cursor-grabbing touch-none"
+      {...attributes}
+      {...listeners}
+    >
+      {children}
+    </Card>
   );
 }
 
