@@ -81,6 +81,7 @@ export function TransactionForm({ editTransaction, open: controlledOpen, onOpenC
     },
   })
 
+  // editTransaction 변경 시에만 폼 리셋 (form을 의존성에서 제거하여 불필요한 리셋 방지)
   useEffect(() => {
     if (editTransaction) {
       form.reset({
@@ -93,17 +94,9 @@ export function TransactionForm({ editTransaction, open: controlledOpen, onOpenC
         date: editTransaction.date,
         memo: editTransaction.memo ?? "",
       })
-    } else if (!isControlled) {
-      form.reset({
-        type: "expense",
-        amount: 0,
-        description: "",
-        accountId: "",
-        date: new Date().toISOString().slice(0, 10),
-        memo: "",
-      })
     }
-  }, [editTransaction, form, isControlled])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editTransaction])
 
   const currentType = form.watch("type")
   const selectedCategoryId = form.watch("categoryId")
