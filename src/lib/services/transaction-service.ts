@@ -4,7 +4,6 @@ import {
   findAllTransactions,
   findTransactionById,
   deleteTransaction,
-  findAccountById,
 } from '@/db/repositories'
 import { createTransactionSchema, updateTransactionSchema } from '@/lib/validators'
 import { successResponse, errorResponse, paginatedResponse } from '@/lib/api-response'
@@ -20,18 +19,7 @@ export async function createTransactionService(
 
   const data = parsed.data
 
-  const account = await findAccountById(data.accountId)
-  if (!account) {
-    return errorResponse('ACCOUNT_NOT_FOUND', `계좌를 찾을 수 없습니다: ${data.accountId}`)
-  }
-
-  if (data.type === 'transfer' && data.toAccountId) {
-    const toAccount = await findAccountById(data.toAccountId)
-    if (!toAccount) {
-      return errorResponse('ACCOUNT_NOT_FOUND', `도착 계좌를 찾을 수 없습니다: ${data.toAccountId}`)
-    }
-  }
-
+  // FK 제약이 DB 레벨에서 보장하므로 별도 검증 불필요
   const transaction = await createTransaction(data)
   return successResponse(transaction)
 }
@@ -64,20 +52,6 @@ export async function updateTransactionService(
   }
 
   const data = parsed.data
-
-  if (data.accountId) {
-    const account = await findAccountById(data.accountId)
-    if (!account) {
-      return errorResponse('ACCOUNT_NOT_FOUND', `계좌를 찾을 수 없습니다: ${data.accountId}`)
-    }
-  }
-
-  if (data.type === 'transfer' && data.toAccountId) {
-    const toAccount = await findAccountById(data.toAccountId)
-    if (!toAccount) {
-      return errorResponse('ACCOUNT_NOT_FOUND', `도착 계좌를 찾을 수 없습니다: ${data.toAccountId}`)
-    }
-  }
 
   const transaction = await updateTransaction(id, data)
   if (!transaction) {

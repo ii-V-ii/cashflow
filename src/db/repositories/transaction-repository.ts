@@ -394,46 +394,32 @@ async function reverseBalanceChange(
   }
 }
 
-// 1자산:N계좌 — accounts.assetId로 자산 조회 후, 연결된 모든 계좌의 잔액 합계로 갱신
+// 1자산:N계좌 — 단일 쿼리로 assetId + 잔액 합계 조회, 2쿼리로 갱신
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function syncAssetFromAccount(accountId: string, tx?: any) {
   const executor = tx ?? getDb()
 
-  // 1. 해당 계좌의 assetId 조회
-  const accountRows = await executor
-    .select({ assetId: accounts.assetId })
-    .from(accounts)
-    .where(eq(accounts.id, accountId))
+  // 1. assetId + 연결 계좌 잔액 합계를 단일 쿼리로 조회
+  const rows = await executor.execute(sql`
+    SELECT a.asset_id, COALESCE(SUM(a2.current_balance), 0)::integer AS total
+    FROM accounts a
+    JOIN accounts a2 ON a2.asset_id = a.asset_id
+    WHERE a.id = ${accountId} AND a.asset_id IS NOT NULL
+    GROUP BY a.asset_id
+  `) as unknown as Array<{ asset_id: string; total: number }>
 
-  const assetId = accountRows[0]?.assetId
-  if (!assetId) return
-
-  // 2. 해당 자산에 연결된 모든 계좌의 잔액 합계
-  const sumRows = await executor
-    .select({ total: sql<number>`COALESCE(SUM(current_balance), 0)::integer` })
-    .from(accounts)
-    .where(eq(accounts.assetId, assetId))
-
-  const totalBalance = sumRows[0]?.total ?? 0
+  if (!rows[0]) return
+  const { asset_id: assetId, total: totalBalance } = rows[0]
   const today = format(new Date(), 'yyyy-MM-dd')
 
-  // 3. 자산 currentValue 갱신 + 평가이력 upsert
-  await executor
-    .update(assets)
-    .set({ currentValue: totalBalance })
-    .where(eq(assets.id, assetId))
-
-  await executor
-    .insert(assetValuations)
-    .values({
-      id: generateId(),
-      assetId,
-      date: today,
-      value: totalBalance,
-      source: 'auto',
-    })
-    .onConflictDoUpdate({
+  // 2. 자산 갱신 + 평가이력 upsert (2쿼리, 병렬)
+  await Promise.all([
+    executor.update(assets).set({ currentValue: totalBalance }).where(eq(assets.id, assetId)),
+    executor.insert(assetValuations).values({
+      id: generateId(), assetId, date: today, value: totalBalance, source: 'auto',
+    }).onConflictDoUpdate({
       target: [assetValuations.assetId, assetValuations.date],
       set: { value: totalBalance, source: 'auto' },
-    })
+    }),
+  ])
 }

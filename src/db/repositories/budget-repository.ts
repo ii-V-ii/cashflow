@@ -271,25 +271,21 @@ export async function upsertBudgetItem(
       })
     }
 
-    // totalIncome/totalExpense 재계산 (소분류 있는 대분류는 제외)
-    const allItems = await tx.select().from(budgetItems).where(eq(budgetItems.budgetId, budget.id))
-    const allCats = await tx.select().from(categories)
-    const catMap = new Map(allCats.map((c) => [c.id, c]))
-    const parentIds = new Set(allCats.filter(c => c.parentId === null).map(c => c.id))
-    const parentsWithChildren = new Set(allCats.filter(c => c.parentId !== null).map(c => c.parentId!))
+    // totalIncome/totalExpense 재계산 - 단일 SQL (소분류 있는 대분류 제외)
+    const totals = await tx.execute(sql`
+      SELECT
+        COALESCE(SUM(CASE WHEN c.type = 'income' THEN bi.planned_amount ELSE 0 END), 0)::integer AS total_income,
+        COALESCE(SUM(CASE WHEN c.type = 'expense' THEN bi.planned_amount ELSE 0 END), 0)::integer AS total_expense
+      FROM budget_items bi
+      JOIN categories c ON bi.category_id = c.id
+      WHERE bi.budget_id = ${budget.id}
+        AND NOT (c.parent_id IS NULL AND EXISTS (
+          SELECT 1 FROM categories c2 WHERE c2.parent_id = c.id
+        ))
+    `) as unknown as Array<{ total_income: number; total_expense: number }>
 
-    let totalIncome = 0
-    let totalExpense = 0
-    for (const item of allItems) {
-      const cat = catMap.get(item.categoryId)
-      if (!cat) continue
-      if (parentIds.has(cat.id) && parentsWithChildren.has(cat.id)) continue
-      if (cat.type === 'income') {
-        totalIncome += item.plannedAmount
-      } else {
-        totalExpense += item.plannedAmount
-      }
-    }
+    const totalIncome = totals[0]?.total_income ?? 0
+    const totalExpense = totals[0]?.total_expense ?? 0
 
     await tx
       .update(budgets)
