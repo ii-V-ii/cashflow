@@ -309,7 +309,8 @@ export async function getMonthlyActuals(year: number) {
   const yearStart = `${year}-01-01`
   const yearEnd = `${year + 1}-01-01`
 
-  // M-2: SUM()::integer, 날짜: EXTRACT 사용, H-2: status='applied' 필터
+  // M-2: SUM()::integer, 날짜: EXTRACT 사용
+  // pending(미래 정기거래) 포함하여 연간 개요에 예상 실적 반영
   return db
     .select({
       month: sql<number>`EXTRACT(MONTH FROM ${transactions.date})::integer`.as('month'),
@@ -322,7 +323,6 @@ export async function getMonthlyActuals(year: number) {
         gte(transactions.date, yearStart),
         lt(transactions.date, yearEnd),
         sql`${transactions.type} in ('income', 'expense')`,
-        sql`${transactions.status} = 'applied'`,
       ),
     )
     .groupBy(sql`EXTRACT(MONTH FROM ${transactions.date})`, transactions.type)

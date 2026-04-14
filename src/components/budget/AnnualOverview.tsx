@@ -156,17 +156,28 @@ export function AnnualOverview({ year }: AnnualOverviewProps) {
                 <TableHead>월</TableHead>
                 <TableHead className="text-right">예산 수입</TableHead>
                 <TableHead className="text-right">실적 수입</TableHead>
+                <TableHead className="text-right text-emerald-600">수입 차이</TableHead>
                 <TableHead className="text-right">예산 지출</TableHead>
                 <TableHead className="text-right">실적 지출</TableHead>
-                <TableHead className="text-right">차이</TableHead>
+                <TableHead className="text-right text-rose-600">지출 차이</TableHead>
+                <TableHead className="text-right">순수익 차이</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {data.months.map((m) => {
-                const netDiff =
-                  m.actualIncome -
-                  m.actualExpense -
-                  (m.plannedIncome - m.plannedExpense)
+                const incomeDiff = m.actualIncome - m.plannedIncome
+                const expenseDiff = m.actualExpense - m.plannedExpense
+                const netDiff = (m.actualIncome - m.actualExpense) - (m.plannedIncome - m.plannedExpense)
+
+                const diffCell = (value: number, positiveIsGood: boolean) => {
+                  const isGood = positiveIsGood ? value >= 0 : value <= 0
+                  return (
+                    <TableCell className={`text-right font-mono text-xs ${isGood ? "text-emerald-600" : "text-rose-600"}`}>
+                      {value > 0 ? "+" : ""}{formatCurrency(value)}
+                    </TableCell>
+                  )
+                }
+
                 return (
                   <TableRow key={m.month}>
                     <TableCell className="font-medium">
@@ -178,20 +189,15 @@ export function AnnualOverview({ year }: AnnualOverviewProps) {
                     <TableCell className="text-right font-mono text-emerald-600">
                       {formatCurrency(m.actualIncome)}
                     </TableCell>
+                    {diffCell(incomeDiff, true)}
                     <TableCell className="text-right font-mono text-muted-foreground">
                       {formatCurrency(m.plannedExpense)}
                     </TableCell>
                     <TableCell className="text-right font-mono text-rose-600">
                       {formatCurrency(m.actualExpense)}
                     </TableCell>
-                    <TableCell
-                      className={`text-right font-mono font-medium ${
-                        netDiff >= 0 ? "text-emerald-600" : "text-rose-600"
-                      }`}
-                    >
-                      {netDiff >= 0 ? "+" : ""}
-                      {formatCurrency(netDiff)}
-                    </TableCell>
+                    {diffCell(expenseDiff, false)}
+                    {diffCell(netDiff, true)}
                   </TableRow>
                 )
               })}
