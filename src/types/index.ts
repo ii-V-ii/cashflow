@@ -33,6 +33,7 @@ export interface Account {
   readonly id: string
   readonly name: string
   readonly type: AccountType
+  readonly initialBalance: number // 초기 잔액
   readonly currentBalance: number // KRW 정수
   readonly color: string | null
   readonly icon: string | null

@@ -163,8 +163,10 @@ export default function AccountsPage() {
   const handleFormSubmit = useCallback(
     (data: CreateAccountInput) => {
       if (editingAccount) {
+        // 수정 모드: balance → initialBalance로 매핑
+        const { balance, ...rest } = data;
         updateMutation.mutate(
-          { id: editingAccount.id, data },
+          { id: editingAccount.id, data: { ...rest, initialBalance: balance } },
           { onSuccess: () => setFormOpen(false) }
         );
       } else {
@@ -176,10 +178,16 @@ export default function AccountsPage() {
     [editingAccount, createMutation, updateMutation]
   );
 
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
   const handleDeleteConfirm = useCallback(() => {
     if (!deleteTarget) return;
+    setErrorMessage(null);
     deleteMutation.mutate(deleteTarget.id, {
       onSuccess: () => setDeleteTarget(null),
+      onError: (err) => {
+        setErrorMessage(err instanceof Error ? err.message : "삭제 중 오류가 발생했습니다.");
+      },
     });
   }, [deleteTarget, deleteMutation]);
 
@@ -345,10 +353,14 @@ export default function AccountsPage() {
       <DeleteConfirmDialog
         open={deleteTarget !== null}
         onOpenChange={(open) => {
-          if (!open) setDeleteTarget(null);
+          if (!open) { setDeleteTarget(null); setErrorMessage(null); }
         }}
         title="계좌 삭제"
-        description={`"${deleteTarget?.name}" 계좌를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`}
+        description={
+          errorMessage
+            ? errorMessage
+            : `"${deleteTarget?.name}" 계좌를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`
+        }
         onConfirm={handleDeleteConfirm}
         isPending={deleteMutation.isPending}
       />

@@ -104,7 +104,7 @@ export function AccountFormDialog({
           ? {
               name: account.name,
               type: account.type,
-              balance: account.currentBalance,
+              balance: account.initialBalance,
               color: account.color,
               icon: account.icon,
               assetId: account.assetId,
@@ -163,7 +163,7 @@ export function AccountFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-sm">
+      <DialogContent className="sm:max-w-sm max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {isEditing ? "계좌 수정" : "계좌 추가"}
@@ -347,25 +347,59 @@ export function AccountFormDialog({
             </>
           )}
 
-          <div className="flex flex-col gap-2">
-            <label htmlFor="account-balance" className="text-sm font-medium">
-              {isSavings && watchedDepositType === "lump_sum"
-                ? "예금 원금 (원)"
-                : "초기 잔액 (원)"}
-            </label>
-            <Input
-              id="account-balance"
-              type="number"
-              placeholder="0"
-              {...register("balance", { valueAsNumber: true })}
-              aria-invalid={!!errors.balance}
-            />
-            {errors.balance && (
-              <p className="text-xs text-destructive">
-                {errors.balance.message}
-              </p>
-            )}
-          </div>
+          {isEditing ? (
+            <>
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium">
+                  현재 잔액 (원)
+                </label>
+                <Input
+                  type="number"
+                  value={account?.currentBalance ?? 0}
+                  disabled
+                  className="bg-muted"
+                />
+                <p className="text-xs text-muted-foreground">
+                  현재 잔액은 거래를 통해 자동 계산됩니다
+                </p>
+              </div>
+              <div className="flex flex-col gap-2">
+                <label htmlFor="account-initial-balance" className="text-sm font-medium">
+                  초기 잔액 보정 (원)
+                </label>
+                <Input
+                  id="account-initial-balance"
+                  type="number"
+                  placeholder="0"
+                  defaultValue={account?.initialBalance ?? 0}
+                  {...register("balance", { valueAsNumber: true })}
+                />
+                <p className="text-xs text-muted-foreground">
+                  거래 기록 이전의 계좌 시작 잔액. 변경 시 현재 잔액도 자동 보정됩니다.
+                </p>
+              </div>
+            </>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <label htmlFor="account-balance" className="text-sm font-medium">
+                {isSavings && watchedDepositType === "lump_sum"
+                  ? "예금 원금 (원)"
+                  : "초기 잔액 (원)"}
+              </label>
+              <Input
+                id="account-balance"
+                type="number"
+                placeholder="0"
+                {...register("balance", { valueAsNumber: true })}
+                aria-invalid={!!errors.balance}
+              />
+              {errors.balance && (
+                <p className="text-xs text-destructive">
+                  {errors.balance.message}
+                </p>
+              )}
+            </div>
+          )}
 
           <div className="flex flex-col gap-2">
             <label className="text-sm font-medium">연결 자산 (선택)</label>

@@ -54,7 +54,11 @@ export async function updateAccount(id: string, input: UpdateAccountInput) {
     .set({
       ...(input.name !== undefined && { name: input.name }),
       ...(input.type !== undefined && { type: input.type }),
-      ...(input.balance !== undefined && { currentBalance: input.balance }),
+      ...(input.initialBalance !== undefined && {
+        initialBalance: input.initialBalance,
+        // initialBalance 변경 시 currentBalance도 같은 차이만큼 보정
+        currentBalance: existing.currentBalance + (input.initialBalance - existing.initialBalance),
+      }),
       ...(input.color !== undefined && { color: input.color }),
       ...(input.icon !== undefined && { icon: input.icon }),
       ...(input.depositType !== undefined && { depositType: input.depositType }),

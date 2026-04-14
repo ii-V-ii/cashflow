@@ -154,7 +154,7 @@ export function TransactionForm({ editTransaction, open: controlledOpen, onOpenC
   const isPending = createMutation.isPending || updateMutation.isPending
 
   const dialogContent = (
-    <DialogContent className="sm:max-w-md">
+    <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
       <DialogHeader>
         <DialogTitle>{isEdit ? "거래 수정" : "새 거래 등록"}</DialogTitle>
         <DialogDescription>

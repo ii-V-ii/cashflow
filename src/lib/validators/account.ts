@@ -19,6 +19,7 @@ export const updateAccountSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   type: z.enum(['cash', 'bank', 'card', 'savings', 'investment']).optional(),
   balance: z.number().int().optional(),
+  initialBalance: z.number().int().optional(),
   color: z.string().max(20).nullable().optional(),
   icon: z.string().max(50).nullable().optional(),
   depositType: z.enum(['lump_sum', 'installment']).nullable().optional(),
