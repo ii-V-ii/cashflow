@@ -40,7 +40,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: "거래", href: "/transactions", icon: ArrowLeftRight },
   { label: "예산", href: "/budgets", icon: PiggyBank },
   { label: "결산", href: "/settlements", icon: ClipboardCheck },
-  { label: "계좌", href: "/accounts", icon: Landmark },
+  { label: "계좌/카드", href: "/accounts", icon: Landmark },
   { label: "자산", href: "/assets", icon: Wallet },
   { label: "투자수익", href: "/investments", icon: BarChart3 },
   { label: "예측", href: "/forecast", icon: TrendingUp },

@@ -39,6 +39,9 @@ export async function createAccount(input: CreateAccountInput) {
       openDate: input.openDate ?? null,
       monthlyPayment: input.monthlyPayment ?? null,
       assetId: input.assetId ?? null,
+      billingDay: input.billingDay ?? null,
+      creditLimit: input.creditLimit ?? null,
+      linkedAccountId: input.linkedAccountId ?? null,
     })
     .returning()
 
@@ -68,6 +71,9 @@ export async function updateAccount(id: string, input: UpdateAccountInput) {
       ...(input.openDate !== undefined && { openDate: input.openDate }),
       ...(input.monthlyPayment !== undefined && { monthlyPayment: input.monthlyPayment }),
       ...(input.assetId !== undefined && { assetId: input.assetId }),
+      ...(input.billingDay !== undefined && { billingDay: input.billingDay }),
+      ...(input.creditLimit !== undefined && { creditLimit: input.creditLimit }),
+      ...(input.linkedAccountId !== undefined && { linkedAccountId: input.linkedAccountId }),
     })
     .where(eq(accounts.id, id))
 

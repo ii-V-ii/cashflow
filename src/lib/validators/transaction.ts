@@ -10,6 +10,8 @@ const baseTransactionSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   memo: z.string().max(500).nullable().optional().default(null),
   tags: z.array(z.string()).optional().default([]),
+  installmentMonths: z.number().int().min(2).max(60).nullable().optional().default(null),
+  installmentCurrent: z.number().int().min(1).nullable().optional().default(null),
 })
 
 export const createTransactionSchema = baseTransactionSchema.refine(

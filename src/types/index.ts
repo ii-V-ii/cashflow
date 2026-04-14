@@ -16,6 +16,8 @@ export interface Transaction {
   readonly recurringId: string | null // 정기거래 연결
   readonly date: string // YYYY-MM-DD
   readonly memo: string | null
+  readonly installmentMonths: number | null // 할부 개월수 (null=일시불)
+  readonly installmentCurrent: number | null // 현재 회차
   readonly tags: readonly string[]
   readonly createdAt: Date
   readonly updatedAt: Date
@@ -46,6 +48,9 @@ export interface Account {
   readonly taxType: TaxType | null
   readonly openDate: string | null // YYYY-MM-DD
   readonly monthlyPayment: number | null
+  readonly billingDay: number | null // 카드 결제일 (1-31)
+  readonly creditLimit: number | null // 카드 한도
+  readonly linkedAccountId: string | null // 결제 계좌
   readonly createdAt: Date
   readonly updatedAt: Date
 }

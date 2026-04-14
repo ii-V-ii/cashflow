@@ -34,6 +34,7 @@ const formSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   memo: z.string().max(500).optional(),
   tags: z.array(z.string()),
+  installmentMonths: z.number().int().min(2).max(36).nullable().optional(),
 })
 
 type FormValues = z.infer<typeof formSchema>
@@ -55,6 +56,8 @@ interface EditTransaction {
   date: string
   memo: string | null
   tags: string[]
+  installmentMonths: number | null
+  installmentCurrent: number | null
 }
 
 interface TransactionFormProps {
@@ -82,6 +85,7 @@ export function TransactionForm({ editTransaction, open: controlledOpen, onOpenC
       date: new Date().toISOString().slice(0, 10),
       memo: "",
       tags: [],
+      installmentMonths: null,
     },
   })
 
@@ -98,6 +102,7 @@ export function TransactionForm({ editTransaction, open: controlledOpen, onOpenC
         date: editTransaction.date,
         memo: editTransaction.memo ?? "",
         tags: editTransaction.tags ?? [],
+        installmentMonths: editTransaction.installmentMonths ?? null,
       })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -105,6 +110,20 @@ export function TransactionForm({ editTransaction, open: controlledOpen, onOpenC
 
   const currentType = form.watch("type")
   const selectedCategoryId = form.watch("categoryId")
+  const selectedAccountId = form.watch("accountId")
+
+  const isCardAccount = useMemo(
+    () => accounts?.find((a) => a.id === selectedAccountId)?.type === "card",
+    [accounts, selectedAccountId]
+  )
+
+  // 카드가 아닌 계좌로 변경 시 할부 초기화
+  useEffect(() => {
+    if (!isCardAccount) {
+      form.setValue("installmentMonths", null)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCardAccount])
 
   // Flat lookup map: categoryId → Category (with expenseKind)
   const categoryMap = useMemo(() => {
@@ -135,6 +154,8 @@ export function TransactionForm({ editTransaction, open: controlledOpen, onOpenC
       toAccountId: values.toAccountId || null,
       memo: values.memo || null,
       tags: values.tags,
+      installmentMonths: values.installmentMonths ?? null,
+      installmentCurrent: values.installmentMonths ? 1 : null,
     }
 
     if (isEdit) {
@@ -232,6 +253,33 @@ export function TransactionForm({ editTransaction, open: controlledOpen, onOpenC
                   ))}
                 </select>
               </div>
+
+              {/* 카드 계좌 선택 시 할부 옵션 */}
+              {t === "expense" && isCardAccount && (
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground">
+                    할부
+                  </label>
+                  <select
+                    className="flex h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                    value={form.watch("installmentMonths") ?? ""}
+                    onChange={(e) => {
+                      const v = e.target.value
+                      form.setValue(
+                        "installmentMonths",
+                        v === "" ? null : Number(v)
+                      )
+                    }}
+                  >
+                    <option value="">일시불</option>
+                    {[2, 3, 6, 10, 12, 24, 36].map((m) => (
+                      <option key={m} value={m}>
+                        {m}개월
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               {/* 이체 또는 저축성 지출: 도착 계좌 */}
               {(t === "transfer" || (t === "expense" && isSavingExpense)) && (

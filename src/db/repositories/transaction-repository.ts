@@ -72,6 +72,8 @@ export async function createTransaction(input: CreateTransactionInput) {
         toAccountId: input.toAccountId ?? null,
         date: input.date,
         memo: input.memo ?? null,
+        installmentMonths: input.installmentMonths ?? null,
+        installmentCurrent: input.installmentCurrent ?? null,
       })
 
     for (const tagName of inputTags) {
@@ -129,6 +131,8 @@ export async function updateTransaction(id: string, input: UpdateTransactionInpu
         ...(input.toAccountId !== undefined && { toAccountId: input.toAccountId }),
         ...(input.date !== undefined && { date: input.date }),
         ...(input.memo !== undefined && { memo: input.memo }),
+        ...(input.installmentMonths !== undefined && { installmentMonths: input.installmentMonths }),
+        ...(input.installmentCurrent !== undefined && { installmentCurrent: input.installmentCurrent }),
       })
       .where(eq(transactions.id, id))
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useMemo } from "react";
-import { Plus, Pencil, Trash2, BarChart3, Link2, Unlink } from "lucide-react";
+import { Plus, Pencil, Trash2, BarChart3, Link2, Unlink, CreditCard } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -36,6 +36,11 @@ import {
 } from "@/components/accounts/AccountFormDialog";
 import { DeleteConfirmDialog } from "@/components/shared/DeleteConfirmDialog";
 import {
+  Progress,
+  ProgressLabel,
+  ProgressValue,
+} from "@/components/ui/progress";
+import {
   useAccounts,
   useCreateAccount,
   useUpdateAccount,
@@ -43,6 +48,7 @@ import {
   useReorderAccounts,
 } from "@/hooks/use-accounts";
 import { useAssets } from "@/hooks/use-assets";
+import { useCreateTransaction } from "@/hooks/use-transactions";
 import { formatKRW } from "@/lib/format";
 import {
   calculateLumpSumDeposit,
@@ -66,6 +72,7 @@ export default function AccountsPage() {
   const { data: assets } = useAssets();
   const createMutation = useCreateAccount();
   const reorderMutation = useReorderAccounts();
+  const createTransactionMutation = useCreateTransaction();
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -180,6 +187,43 @@ export default function AccountsPage() {
 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // 계좌 이름 조회
+  const getAccountName = useCallback(
+    (id: string) => (accounts ?? []).find((a) => a.id === id)?.name ?? "",
+    [accounts]
+  );
+
+  const handleCardPayment = useCallback(
+    (cardAccount: Account) => {
+      if (!cardAccount.linkedAccountId) return;
+      const unpaid = Math.abs(cardAccount.currentBalance);
+      if (unpaid === 0) {
+        alert("미결제금이 없습니다.");
+        return;
+      }
+      const linkedName = getAccountName(cardAccount.linkedAccountId);
+      if (
+        !confirm(
+          `${linkedName} → ${cardAccount.name}으로 ${formatKRW(unpaid)} 결제하시겠습니까?`
+        )
+      )
+        return;
+
+      createTransactionMutation.mutate({
+        type: "transfer",
+        amount: unpaid,
+        description: `${cardAccount.name} 카드 결제`,
+        accountId: cardAccount.linkedAccountId,
+        toAccountId: cardAccount.id,
+        date: new Date().toISOString().slice(0, 10),
+        categoryId: null,
+        memo: null,
+        tags: [],
+      });
+    },
+    [createTransactionMutation, getAccountName]
+  );
+
   const handleDeleteConfirm = useCallback(() => {
     if (!deleteTarget) return;
     setErrorMessage(null);
@@ -194,7 +238,7 @@ export default function AccountsPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">계좌</h1>
+        <h1 className="text-2xl font-semibold">계좌/카드</h1>
         <Button size="sm" onClick={handleAdd}>
           <Plus className="size-4" data-icon="inline-start" />
           추가
@@ -265,15 +309,24 @@ export default function AccountsPage() {
                       </CardHeader>
                       <CardContent className="space-y-2">
                         <div className="flex items-end justify-between">
-                          <p
-                            className={
-                              account.currentBalance >= 0
-                                ? "text-lg font-semibold"
-                                : "text-lg font-semibold text-destructive"
-                            }
-                          >
-                            {formatKRW(account.currentBalance)}
-                          </p>
+                          {account.type === "card" ? (
+                            <div>
+                              <span className="text-xs text-muted-foreground">미결제금</span>
+                              <p className="text-lg font-semibold">
+                                {formatKRW(Math.abs(account.currentBalance))}
+                              </p>
+                            </div>
+                          ) : (
+                            <p
+                              className={
+                                account.currentBalance >= 0
+                                  ? "text-lg font-semibold"
+                                  : "text-lg font-semibold text-destructive"
+                              }
+                            >
+                              {formatKRW(account.currentBalance)}
+                            </p>
+                          )}
                           <div className="flex gap-1">
                           <Button
                             variant="ghost"
@@ -293,6 +346,15 @@ export default function AccountsPage() {
                           </Button>
                           </div>
                         </div>
+                        {/* 카드 전용 정보 */}
+                        {account.type === "card" && (
+                          <CardAccountInfo
+                            account={account}
+                            getAccountName={getAccountName}
+                            onPayment={handleCardPayment}
+                            isPaymentPending={createTransactionMutation.isPending}
+                          />
+                        )}
                         {account.depositType &&
                           account.openDate &&
                           account.termMonths &&
@@ -506,6 +568,66 @@ function DepositMaturityInfo({
         <span className="text-muted-foreground">만기 수령액</span>
         <span className="font-semibold">{formatKRW(result.totalAtMaturity)}</span>
       </div>
+    </div>
+  );
+}
+
+function CardAccountInfo({
+  account,
+  getAccountName,
+  onPayment,
+  isPaymentPending,
+}: {
+  account: Account;
+  getAccountName: (id: string) => string;
+  onPayment: (account: Account) => void;
+  isPaymentPending: boolean;
+}) {
+  const unpaid = Math.abs(account.currentBalance);
+  const usageRate =
+    account.creditLimit && account.creditLimit > 0
+      ? Math.min((unpaid / account.creditLimit) * 100, 100)
+      : null;
+
+  return (
+    <div className="space-y-2">
+      {/* 결제일 + 결제 계좌 */}
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+        {account.billingDay && (
+          <span>결제일: 매월 {account.billingDay}일</span>
+        )}
+        {account.linkedAccountId && (
+          <span>결제계좌: {getAccountName(account.linkedAccountId)}</span>
+        )}
+      </div>
+
+      {/* 한도 대비 사용률 프로그레스바 */}
+      {usageRate !== null && account.creditLimit && (
+        <Progress value={usageRate}>
+          <ProgressLabel className="text-xs">
+            사용률
+          </ProgressLabel>
+          <ProgressValue className="text-xs">
+            {() =>
+              `${formatKRW(unpaid)} / ${formatKRW(account.creditLimit!)} (${Math.round(usageRate)}%)`
+            }
+          </ProgressValue>
+        </Progress>
+      )}
+
+      {/* 카드 결제 버튼 */}
+      {account.linkedAccountId && unpaid > 0 && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full text-xs"
+          onClick={() => onPayment(account)}
+          disabled={isPaymentPending}
+        >
+          <CreditCard className="size-3.5 mr-1" />
+          {isPaymentPending ? "결제 중..." : `카드 결제 (${formatKRW(unpaid)})`}
+        </Button>
+      )}
     </div>
   );
 }

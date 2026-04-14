@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
@@ -25,6 +25,7 @@ import {
   type CreateAccountFormInput,
 } from "@/lib/validators/account";
 import { useAssets } from "@/hooks/use-assets";
+import { useAccounts } from "@/hooks/use-accounts";
 import type { Account, AccountType, DepositType, TaxType } from "@/types";
 
 const ACCOUNT_TYPE_LABELS: Record<AccountType, string> = {
@@ -71,6 +72,7 @@ export function AccountFormDialog({
   isPending,
 }: AccountFormDialogProps) {
   const { data: assetsData } = useAssets();
+  const { data: allAccounts } = useAccounts();
   const {
     register,
     handleSubmit,
@@ -94,6 +96,9 @@ export function AccountFormDialog({
       taxType: null,
       openDate: null,
       monthlyPayment: null,
+      billingDay: null,
+      creditLimit: null,
+      linkedAccountId: null,
     },
   });
 
@@ -114,6 +119,9 @@ export function AccountFormDialog({
               taxType: account.taxType,
               openDate: account.openDate,
               monthlyPayment: account.monthlyPayment,
+              billingDay: account.billingDay,
+              creditLimit: account.creditLimit,
+              linkedAccountId: account.linkedAccountId,
             }
           : {
               name: "",
@@ -128,6 +136,9 @@ export function AccountFormDialog({
               taxType: null,
               openDate: null,
               monthlyPayment: null,
+              billingDay: null,
+              creditLimit: null,
+              linkedAccountId: null,
             }
       );
     }
@@ -136,6 +147,16 @@ export function AccountFormDialog({
   const watchedType = watch("type");
   const watchedDepositType = watch("depositType");
   const isSavings = watchedType === "savings";
+  const isCard = watchedType === "card";
+
+  // 결제 계좌 후보: 현재 편집 중인 계좌 제외, bank/cash 계좌만
+  const linkedAccountCandidates = useMemo(
+    () =>
+      (allAccounts ?? []).filter(
+        (a) => a.isActive && a.type !== "card" && a.id !== account?.id
+      ),
+    [allAccounts, account]
+  );
 
   useEffect(() => {
     if (isSavings) {
@@ -152,6 +173,14 @@ export function AccountFormDialog({
       setValue("monthlyPayment", null);
     }
   }, [isSavings, watchedDepositType, setValue]);
+
+  useEffect(() => {
+    if (!isCard) {
+      setValue("billingDay", null);
+      setValue("creditLimit", null);
+      setValue("linkedAccountId", null);
+    }
+  }, [isCard, setValue]);
 
   useEffect(() => {
     if (watchedDepositType === "lump_sum") {
@@ -344,6 +373,94 @@ export function AccountFormDialog({
                   />
                 </div>
               )}
+            </>
+          )}
+
+          {isCard && (
+            <>
+              {/* 결제일 */}
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium">결제일</label>
+                <Controller
+                  name="billingDay"
+                  control={control}
+                  render={({ field }) => (
+                    <Select
+                      value={field.value != null ? String(field.value) : "__none__"}
+                      onValueChange={(v) =>
+                        field.onChange(v === "__none__" ? null : Number(v))
+                      }
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="결제일 선택">
+                          {(value: string) =>
+                            value === "__none__" ? "결제일 선택" : `매월 ${value}일`
+                          }
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">선택 안 함</SelectItem>
+                        {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+                          <SelectItem key={d} value={String(d)}>
+                            매월 {d}일
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </div>
+
+              {/* 카드 한도 */}
+              <div className="flex flex-col gap-2">
+                <label htmlFor="credit-limit" className="text-sm font-medium">
+                  카드 한도 (원)
+                </label>
+                <Input
+                  id="credit-limit"
+                  type="number"
+                  min={0}
+                  placeholder="5000000"
+                  {...register("creditLimit", nullableNumber)}
+                />
+              </div>
+
+              {/* 결제 계좌 */}
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium">결제 계좌</label>
+                <Controller
+                  name="linkedAccountId"
+                  control={control}
+                  render={({ field }) => (
+                    <Select
+                      value={field.value ?? "__none__"}
+                      onValueChange={(v) =>
+                        field.onChange(v === "__none__" ? null : v)
+                      }
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="결제 계좌 선택">
+                          {(value: string) => {
+                            if (value === "__none__") return "없음";
+                            const acc = linkedAccountCandidates.find(
+                              (a) => a.id === value
+                            );
+                            return acc?.name ?? "없음";
+                          }}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">없음</SelectItem>
+                        {linkedAccountCandidates.map((a) => (
+                          <SelectItem key={a.id} value={a.id}>
+                            {a.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </div>
             </>
           )}
 

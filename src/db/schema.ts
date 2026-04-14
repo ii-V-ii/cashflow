@@ -48,12 +48,16 @@ export const accounts = pgTable(
     taxType: text('tax_type', { enum: ['normal', 'preferential', 'tax_free', 'high'] }),
     openDate: date('open_date'),
     monthlyPayment: integer('monthly_payment'),
+    billingDay: integer('billing_day'),
+    creditLimit: integer('credit_limit'),
+    linkedAccountId: text('linked_account_id').references((): any => accounts.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (table) => [
     index('idx_accounts_type').on(table.type),
     index('idx_accounts_asset_id').on(table.assetId),
+    index('idx_accounts_linked_account_id').on(table.linkedAccountId),
   ],
 )
 
@@ -77,6 +81,8 @@ export const transactions = pgTable(
     recurringId: text('recurring_id').references(() => recurringTransactions.id, { onDelete: 'set null' }),
     date: date('date').notNull(),
     memo: text('memo'),
+    installmentMonths: integer('installment_months'),
+    installmentCurrent: integer('installment_current'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
   },

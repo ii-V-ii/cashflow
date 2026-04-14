@@ -13,6 +13,9 @@ export const createAccountSchema = z.object({
   openDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional().default(null),
   monthlyPayment: z.number().int().positive().nullable().optional().default(null),
   assetId: z.string().nullable().optional().default(null),
+  billingDay: z.number().int().min(1).max(31).nullable().optional().default(null),
+  creditLimit: z.number().int().min(0).nullable().optional().default(null),
+  linkedAccountId: z.string().nullable().optional().default(null),
 })
 
 export const updateAccountSchema = z.object({
@@ -29,6 +32,9 @@ export const updateAccountSchema = z.object({
   openDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   monthlyPayment: z.number().int().positive().nullable().optional(),
   assetId: z.string().nullable().optional(),
+  billingDay: z.number().int().min(1).max(31).nullable().optional(),
+  creditLimit: z.number().int().min(0).nullable().optional(),
+  linkedAccountId: z.string().nullable().optional(),
 })
 
 export type CreateAccountInput = z.infer<typeof createAccountSchema>

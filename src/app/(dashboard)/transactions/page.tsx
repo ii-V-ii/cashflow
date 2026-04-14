@@ -74,6 +74,8 @@ interface TransactionRow {
   date: string
   memo: string | null
   tags: string[]
+  installmentMonths: number | null
+  installmentCurrent: number | null
 }
 
 export default function TransactionsPage() {
@@ -334,7 +336,14 @@ export default function TransactionsPage() {
                     </div>
                   </TableCell>
                   <TableCell className="max-w-48">
-                    <div className="font-medium truncate">{tx.description}</div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-medium truncate">{tx.description}</span>
+                      {tx.installmentMonths && tx.installmentCurrent && (
+                        <Badge variant="outline" className="shrink-0 text-[10px] px-1.5 py-0 h-4 border-blue-300 text-blue-600 bg-blue-50">
+                          {tx.installmentCurrent}/{tx.installmentMonths}
+                        </Badge>
+                      )}
+                    </div>
                     {tx.tags && tx.tags.length > 0 && (
                       <div className="flex flex-wrap gap-1 mt-0.5">
                         {tx.tags.map((tag) => (
