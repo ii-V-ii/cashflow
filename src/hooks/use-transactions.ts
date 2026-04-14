@@ -44,6 +44,7 @@ function buildSearchParams(params?: TransactionParams): string {
   if (f?.dateRange?.from) sp.set("from", f.dateRange.from)
   if (f?.dateRange?.to) sp.set("to", f.dateRange.to)
   if (f?.search) sp.set("search", f.search)
+  if (f?.tags && f.tags.length > 0) sp.set("tags", f.tags.join(","))
 
   return sp.toString()
 }

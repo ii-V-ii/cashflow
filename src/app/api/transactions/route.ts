@@ -64,5 +64,14 @@ function parseFilter(params: URLSearchParams): TransactionFilter | undefined {
     hasFilter = true
   }
 
+  const tagsParam = params.get('tags')
+  if (tagsParam) {
+    const tagList = tagsParam.split(',').map((t) => t.trim()).filter(Boolean)
+    if (tagList.length > 0) {
+      (filter as { tags: string[] }).tags = tagList
+      hasFilter = true
+    }
+  }
+
   return hasFilter ? filter : undefined
 }

@@ -7,6 +7,7 @@ import { z } from "zod"
 import { Plus, Pencil } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { TagInput } from "@/components/shared/TagInput"
 import {
   Dialog,
   DialogContent,
@@ -32,6 +33,7 @@ const formSchema = z.object({
   toAccountId: z.string().optional(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   memo: z.string().max(500).optional(),
+  tags: z.array(z.string()),
 })
 
 type FormValues = z.infer<typeof formSchema>
@@ -52,6 +54,7 @@ interface EditTransaction {
   toAccountId: string | null
   date: string
   memo: string | null
+  tags: string[]
 }
 
 interface TransactionFormProps {
@@ -78,6 +81,7 @@ export function TransactionForm({ editTransaction, open: controlledOpen, onOpenC
       accountId: "",
       date: new Date().toISOString().slice(0, 10),
       memo: "",
+      tags: [],
     },
   })
 
@@ -93,6 +97,7 @@ export function TransactionForm({ editTransaction, open: controlledOpen, onOpenC
         toAccountId: editTransaction.toAccountId ?? undefined,
         date: editTransaction.date,
         memo: editTransaction.memo ?? "",
+        tags: editTransaction.tags ?? [],
       })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -129,6 +134,7 @@ export function TransactionForm({ editTransaction, open: controlledOpen, onOpenC
       categoryId: values.categoryId || null,
       toAccountId: values.toAccountId || null,
       memo: values.memo || null,
+      tags: values.tags,
     }
 
     if (isEdit) {
@@ -276,6 +282,17 @@ export function TransactionForm({ editTransaction, open: controlledOpen, onOpenC
                   </select>
                 </div>
               )}
+
+              {/* 태그 */}
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">
+                  태그
+                </label>
+                <TagInput
+                  value={form.watch("tags")}
+                  onChange={(tags) => form.setValue("tags", tags)}
+                />
+              </div>
 
               {/* 메모 */}
               <div>

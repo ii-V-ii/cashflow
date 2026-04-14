@@ -73,6 +73,7 @@ interface TransactionRow {
   recurringId: string | null
   date: string
   memo: string | null
+  tags: string[]
 }
 
 export default function TransactionsPage() {
@@ -84,6 +85,7 @@ export default function TransactionsPage() {
   const [categoryFilter, setCategoryFilter] = useState("")
   const [accountFilter, setAccountFilter] = useState("")
   const [search, setSearch] = useState("")
+  const [tagFilter, setTagFilter] = useState("")
   const [editTx, setEditTx] = useState<TransactionRow | null>(null)
   const [editOpen, setEditOpen] = useState(false)
   const limit = 20
@@ -93,12 +95,18 @@ export default function TransactionsPage() {
   const nextY = month === 12 ? year + 1 : year
   const to = `${nextY}-${String(nextM).padStart(2, "0")}-01`
 
+  const parsedTags = tagFilter
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean)
+
   const filter = {
     dateRange: { from, to },
     ...(typeFilter && { type: typeFilter as TransactionType }),
     ...(categoryFilter && { categoryId: categoryFilter }),
     ...(accountFilter && { accountId: accountFilter }),
     ...(search && { search }),
+    ...(parsedTags.length > 0 && { tags: parsedTags }),
   }
 
   const { data, isLoading } = useTransactions({
@@ -256,6 +264,15 @@ export default function TransactionsPage() {
             </option>
           ))}
         </select>
+        <Input
+          placeholder="태그 필터 (쉼표 구분)"
+          className="min-w-36 max-w-48"
+          value={tagFilter}
+          onChange={(e) => {
+            setTagFilter(e.target.value)
+            setPage(1)
+          }}
+        />
       </div>
 
       {/* 테이블 */}
@@ -316,8 +333,17 @@ export default function TransactionsPage() {
                       )}
                     </div>
                   </TableCell>
-                  <TableCell className="font-medium max-w-48 truncate">
-                    {tx.description}
+                  <TableCell className="max-w-48">
+                    <div className="font-medium truncate">{tx.description}</div>
+                    {tx.tags && tx.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-0.5">
+                        {tx.tags.map((tag) => (
+                          <Badge key={tag} variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
+                            {tag}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
                   </TableCell>
                   <TableCell className="text-muted-foreground">
                     {getCategoryName(tx.categoryId)}
