@@ -58,7 +58,7 @@ export async function createRecurringTransaction(input: CreateRecurringTransacti
     nextDate = calculateNextDate(nextDate, freq, intv)
   }
 
-  await db.insert(recurringTransactions)
+  const [result] = await db.insert(recurringTransactions)
     .values({
       id,
       type: input.type,
@@ -74,8 +74,9 @@ export async function createRecurringTransaction(input: CreateRecurringTransacti
       nextDate,
       isActive: true,
     })
+    .returning()
 
-  return (await findRecurringTransactionById(id))!
+  return result
 }
 
 export async function updateRecurringTransaction(id: string, input: UpdateRecurringTransactionInput) {
@@ -83,7 +84,7 @@ export async function updateRecurringTransaction(id: string, input: UpdateRecurr
   const existing = await findRecurringTransactionById(id)
   if (!existing) return null
 
-  await db.update(recurringTransactions)
+  const [result] = await db.update(recurringTransactions)
     .set({
       ...(input.type !== undefined && { type: input.type }),
       ...(input.amount !== undefined && { amount: input.amount }),
@@ -98,8 +99,9 @@ export async function updateRecurringTransaction(id: string, input: UpdateRecurr
       ...(input.isActive !== undefined && { isActive: input.isActive }),
     })
     .where(eq(recurringTransactions.id, id))
+    .returning()
 
-  return (await findRecurringTransactionById(id))!
+  return result
 }
 
 export async function updateNextDate(id: string, nextDate: string) {

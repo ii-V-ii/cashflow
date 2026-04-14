@@ -1,7 +1,7 @@
-import { eq, and, sql, isNull, gte, lt } from 'drizzle-orm'
+import { eq, and, sql, isNull, gte, lt, inArray } from 'drizzle-orm'
 import { getDb } from '../index'
 import { budgets, budgetItems, transactions, categories } from '../schema'
-import { generateId } from '../../lib/utils'
+import { generateId, monthDateRange } from '../../lib/utils'
 import type { CreateBudgetInput, UpdateBudgetInput, BudgetItemInput } from '../../lib/validators'
 
 // === Budgets CRUD ===
@@ -159,8 +159,10 @@ export async function getActualsByYearMonth(year: number, month: number) {
 
 export async function getBudgetItemsWithActuals(budgetId: string, year: number, month: number) {
   const db = getDb()
-  const items = await getBudgetItems(budgetId)
-  const actuals = await getActualsByYearMonth(year, month)
+  const [items, actuals] = await Promise.all([
+    getBudgetItems(budgetId),
+    getActualsByYearMonth(year, month),
+  ])
 
   const actualMap = new Map<string, number>()
   for (const a of actuals) {
@@ -211,7 +213,7 @@ export async function findBudgetsWithItemsByYear(year: number) {
   const allItems = await db
     .select()
     .from(budgetItems)
-    .where(sql`${budgetItems.budgetId} IN (${sql.join(budgetIds.map(id => sql`${id}`), sql`, `)})`)
+    .where(inArray(budgetItems.budgetId, budgetIds))
 
   return yearBudgets.map((b) => ({
     ...b,
@@ -236,15 +238,14 @@ export async function upsertBudgetItem(
 
     if (!budget) {
       const id = generateId()
-      await tx.insert(budgets).values({
+      budgetRows = await tx.insert(budgets).values({
         id,
         name: `${year}년 ${month}월 예산`,
         year,
         month,
         totalIncome: 0,
         totalExpense: 0,
-      })
-      budgetRows = await tx.select().from(budgets).where(eq(budgets.id, id))
+      }).returning()
       budget = budgetRows[0]!
     }
 
@@ -287,13 +288,13 @@ export async function upsertBudgetItem(
     const totalIncome = totals[0]?.total_income ?? 0
     const totalExpense = totals[0]?.total_expense ?? 0
 
-    await tx
+    const [result] = await tx
       .update(budgets)
       .set({ totalIncome, totalExpense })
       .where(eq(budgets.id, budget.id))
+      .returning()
 
-    const result = await tx.select().from(budgets).where(eq(budgets.id, budget.id))
-    return result[0]!
+    return result
   })
 }
 
@@ -321,12 +322,3 @@ export async function getMonthlyActuals(year: number) {
     .groupBy(sql`EXTRACT(MONTH FROM ${transactions.date})`, transactions.type)
 }
 
-// === Helpers ===
-
-function monthDateRange(year: number, month: number) {
-  const start = `${year}-${String(month).padStart(2, '0')}-01`
-  const nextMonth = month === 12 ? 1 : month + 1
-  const nextYear = month === 12 ? year + 1 : year
-  const end = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`
-  return { start, end }
-}

@@ -94,22 +94,22 @@ export async function saveForecastResults(
 ) {
   const db = getDb()
 
-  await db.transaction(async (tx) => {
+  return db.transaction(async (tx) => {
     await tx.delete(forecastResults)
       .where(eq(forecastResults.scenarioId, scenarioId))
 
-    if (results.length > 0) {
-      const values = results.map((result) => ({
-        id: generateId(),
-        scenarioId,
-        date: result.date,
-        projectedIncome: result.projectedIncome,
-        projectedExpense: result.projectedExpense,
-        projectedBalance: result.projectedBalance,
-        projectedNetWorth: result.projectedNetWorth,
-        details: result.details,
-      }))
-      await tx.insert(forecastResults).values(values)
-    }
+    if (results.length === 0) return []
+
+    const values = results.map((result) => ({
+      id: generateId(),
+      scenarioId,
+      date: result.date,
+      projectedIncome: result.projectedIncome,
+      projectedExpense: result.projectedExpense,
+      projectedBalance: result.projectedBalance,
+      projectedNetWorth: result.projectedNetWorth,
+      details: result.details,
+    }))
+    return tx.insert(forecastResults).values(values).returning()
   })
 }

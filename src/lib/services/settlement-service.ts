@@ -2,6 +2,7 @@ import { and, sql, gte, lt } from 'drizzle-orm'
 import { getDb } from '@/db/index'
 import { transactions, categories, accounts } from '@/db/schema'
 import { successResponse } from '@/lib/api-response'
+import { monthDateRange } from '@/lib/utils'
 import type {
   ApiResponse,
   MonthlySettlement,
@@ -342,12 +343,3 @@ async function getYearTotals(
   return { totalIncome, totalExpense, netIncome: totalIncome - totalExpense }
 }
 
-// === Date Helpers ===
-
-function monthDateRange(year: number, month: number) {
-  const start = `${year}-${String(month).padStart(2, '0')}-01`
-  const nextMonth = month === 12 ? 1 : month + 1
-  const nextYear = month === 12 ? year + 1 : year
-  const end = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`
-  return { start, end }
-}

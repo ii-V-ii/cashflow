@@ -179,6 +179,26 @@ function countOccurrencesInMonth(
   monthStart: string,
   monthEnd: string,
 ): number {
+  // daily frequency 최적화: 루프 대신 날짜 차이로 직접 계산
+  if (frequency === 'daily') {
+    const start = new Date(monthStart > nextDate ? monthStart : nextDate)
+    const end = new Date(monthEnd)
+    if (start > end) return 0
+
+    if (interval === 1) {
+      return Math.floor((end.getTime() - start.getTime()) / (86400000)) + 1
+    }
+
+    // interval > 1: nextDate 기준으로 정렬된 첫 발생일 계산
+    const nextD = new Date(nextDate)
+    const daysSinceNext = Math.floor((start.getTime() - nextD.getTime()) / 86400000)
+    const remainder = daysSinceNext % interval
+    const firstOccurrence = remainder === 0 ? start : new Date(start.getTime() + (interval - remainder) * 86400000)
+    if (firstOccurrence > end) return 0
+
+    return Math.floor((end.getTime() - firstOccurrence.getTime()) / (interval * 86400000)) + 1
+  }
+
   let count = 0
   let current = nextDate
 

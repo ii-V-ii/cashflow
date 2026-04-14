@@ -151,11 +151,8 @@ export async function runForecastService(
     }
   })
 
-  // 결과 저장
-  await saveForecastResults(scenario.id, resultRows)
-
-  // 저장된 결과 조회하여 반환
-  const savedResults = await findForecastResultsByScenarioId(scenario.id)
+  // 결과 저장 (RETURNING으로 저장된 행 직접 반환)
+  const savedResults = await saveForecastResults(scenario.id, resultRows)
 
   return successResponse({
     scenario: { ...scenario, assumptions },

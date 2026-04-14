@@ -1,4 +1,4 @@
-import { eq, and, desc } from 'drizzle-orm'
+import { eq, and, desc, sql } from 'drizzle-orm'
 import { getDb } from '../index'
 import { assets, assetCategories, assetValuations } from '../schema'
 import { generateId } from '../../lib/utils'
@@ -39,7 +39,7 @@ export async function createAsset(input: CreateAssetInput) {
   const db = getDb()
   const id = generateId()
 
-  await db.insert(assets)
+  const [result] = await db.insert(assets)
     .values({
       id,
       name: input.name,
@@ -52,8 +52,9 @@ export async function createAsset(input: CreateAssetInput) {
       isActive: input.isActive ?? true,
       metadata: input.metadata ?? null,
     })
+    .returning()
 
-  return (await findAssetById(id))!
+  return result
 }
 
 export async function updateAsset(id: string, input: UpdateAssetInput) {
@@ -61,7 +62,7 @@ export async function updateAsset(id: string, input: UpdateAssetInput) {
   const existing = await findAssetById(id)
   if (!existing) return null
 
-  await db.update(assets)
+  const [result] = await db.update(assets)
     .set({
       ...(input.name !== undefined && { name: input.name }),
       ...(input.assetCategoryId !== undefined && { assetCategoryId: input.assetCategoryId }),
@@ -74,8 +75,9 @@ export async function updateAsset(id: string, input: UpdateAssetInput) {
       ...(input.metadata !== undefined && { metadata: input.metadata }),
     })
     .where(eq(assets.id, id))
+    .returning()
 
-  return (await findAssetById(id))!
+  return result
 }
 
 export async function deleteAsset(id: string) {
@@ -92,11 +94,12 @@ export async function updateCurrentValue(id: string, value: number) {
   const existing = await findAssetById(id)
   if (!existing) return null
 
-  await db.update(assets)
+  const [result] = await db.update(assets)
     .set({ currentValue: value })
     .where(eq(assets.id, id))
+    .returning()
 
-  return (await findAssetById(id))!
+  return result
 }
 
 // === Valuations ===
@@ -125,7 +128,8 @@ export async function addValuation(assetId: string, input: CreateValuationInput)
   const db = getDb()
   const id = generateId()
 
-  await db.insert(assetValuations)
+  // INSERT RETURNING으로 재조회 제거
+  const [inserted] = await db.insert(assetValuations)
     .values({
       id,
       assetId,
@@ -134,13 +138,25 @@ export async function addValuation(assetId: string, input: CreateValuationInput)
       source: input.source ?? 'manual',
       memo: input.memo ?? null,
     })
+    .returning()
 
-  // 최신 평가인 경우 자산 현재가치도 갱신
-  const latest = await getLatestValuation(assetId)
-  if (latest && latest.id === id) {
-    await updateCurrentValue(assetId, input.value)
+  // 더 최근 평가가 없으면 자산 현재가치 갱신
+  const laterRows = await db
+    .select({ id: assetValuations.id })
+    .from(assetValuations)
+    .where(
+      and(
+        eq(assetValuations.assetId, assetId),
+        sql`${assetValuations.date} > ${input.date}`,
+      ),
+    )
+    .limit(1)
+
+  if (laterRows.length === 0) {
+    await db.update(assets)
+      .set({ currentValue: input.value })
+      .where(eq(assets.id, assetId))
   }
 
-  const rows = await db.select().from(assetValuations).where(eq(assetValuations.id, id))
-  return rows[0]!
+  return inserted
 }

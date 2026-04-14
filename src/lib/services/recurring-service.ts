@@ -1,6 +1,6 @@
-import { eq, and, lte } from 'drizzle-orm'
+import { eq, and, lte, inArray } from 'drizzle-orm'
 import { getDb } from '@/db/index'
-import { transactions } from '@/db/schema'
+import { transactions, recurringTransactions } from '@/db/schema'
 import {
   findAllRecurringTransactions,
   findActiveRecurringTransactions,
@@ -120,6 +120,18 @@ export async function processDueTransactionsService(
       ),
     )
 
+  // 배치 조회: 필요한 정기거래를 IN절로 한 번에 가져오기
+  const recurringIds = [...new Set(
+    pendingRows.filter(r => r.recurringId).map(r => r.recurringId!),
+  )]
+  const recurringMap = new Map<string, typeof recurringRows[0]>()
+  const recurringRows = recurringIds.length > 0
+    ? await db.select().from(recurringTransactions).where(inArray(recurringTransactions.id, recurringIds))
+    : []
+  for (const r of recurringRows) {
+    recurringMap.set(r.id, r)
+  }
+
   let processed = 0
 
   for (const row of pendingRows) {
@@ -156,15 +168,9 @@ export async function processDueTransactionsService(
       }
     })
 
-    // 정기거래의 nextDate 업데이트
+    // 정기거래의 nextDate 업데이트 (배치 조회한 Map 사용)
     if (row.recurringId) {
-      const nextDate = calculateNextDate(
-        row.date,
-        'monthly' as RecurringFrequency, // 기본값; 실제 frequency는 아래서 조회
-        1,
-      )
-      // 정기거래 정보로 정확한 nextDate 계산
-      const recurring = await findRecurringTransactionById(row.recurringId)
+      const recurring = recurringMap.get(row.recurringId)
       if (recurring) {
         const correctNextDate = calculateNextDate(
           row.date,

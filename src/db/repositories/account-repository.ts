@@ -1,6 +1,6 @@
 import { eq, sql } from 'drizzle-orm'
 import { getDb } from '../index'
-import { accounts } from '../schema'
+import { accounts, assets } from '../schema'
 import { generateId } from '../../lib/utils'
 import { syncAssetFromAccount } from './transaction-repository'
 import type { CreateAccountInput, UpdateAccountInput } from '../../lib/validators'
@@ -23,7 +23,7 @@ export async function createAccount(input: CreateAccountInput) {
   const db = getDb()
   const id = generateId()
 
-  await db.insert(accounts)
+  const [result] = await db.insert(accounts)
     .values({
       id,
       name: input.name,
@@ -40,8 +40,9 @@ export async function createAccount(input: CreateAccountInput) {
       monthlyPayment: input.monthlyPayment ?? null,
       assetId: input.assetId ?? null,
     })
+    .returning()
 
-  return (await findAccountById(id))!
+  return result
 }
 
 export async function updateAccount(id: string, input: UpdateAccountInput) {
@@ -82,8 +83,7 @@ export async function updateAccount(id: string, input: UpdateAccountInput) {
         await syncAssetFromAccount(otherAccounts[0].id)
       } else {
         // 연결된 계좌가 없으면 자산 가치를 0으로 (또는 유지)
-        const { assets: assetsTable } = await import('../schema')
-        await db.update(assetsTable).set({ currentValue: 0 }).where(eq(assetsTable.id, existing.assetId))
+        await db.update(assets).set({ currentValue: 0 }).where(eq(assets.id, existing.assetId))
       }
     }
   }

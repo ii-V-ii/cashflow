@@ -2,6 +2,7 @@ import { and, sql, gte, lt } from 'drizzle-orm'
 import { getDb } from '@/db/index'
 import { transactions, categories, accounts } from '@/db/schema'
 import { successResponse } from '@/lib/api-response'
+import { monthDateRange } from '@/lib/utils'
 import type {
   ApiResponse,
   IncomeExpenseTrendItem,
@@ -115,48 +116,39 @@ export async function getNetWorthTrend(
 
   if (monthList.length === 0) return successResponse([])
 
-  // 전체 계좌 initialBalance 합계
-  const allAccounts = await db.select().from(accounts)
-  const totalInitialBalance = allAccounts.reduce((sum, a) => sum + a.initialBalance, 0)
+  const startDate = `${monthList[0]}-01`
 
-  // 단일 쿼리: 월별 순효과 (transfer는 전 계좌 합산 시 net-zero이므로 제외)
-  const rows = await db.execute(sql`
-    SELECT
-      to_char(date, 'YYYY-MM') AS year_month,
-      SUM(CASE WHEN type = 'income' THEN amount WHEN type = 'expense' THEN -amount ELSE 0 END)::integer AS net_effect
-    FROM transactions
-    WHERE status = 'applied'
-    GROUP BY to_char(date, 'YYYY-MM')
-    ORDER BY year_month
-  `) as unknown as Array<{ year_month: string; net_effect: number }>
+  // 병렬: 초기잔액 SUM + 시작일 이전 누적효과 + 요청 범위 월별 효과
+  const [balanceRows, priorRows, monthlyRows] = await Promise.all([
+    db
+      .select({ total: sql<number>`coalesce(sum(${accounts.initialBalance}), 0)::integer`.as('total') })
+      .from(accounts),
+    db.execute(sql`
+      SELECT coalesce(SUM(CASE WHEN type = 'income' THEN amount WHEN type = 'expense' THEN -amount ELSE 0 END), 0)::integer AS prior_effect
+      FROM transactions
+      WHERE status = 'applied' AND date < ${startDate}
+    `) as unknown as Promise<Array<{ prior_effect: number }>>,
+    db.execute(sql`
+      SELECT
+        to_char(date, 'YYYY-MM') AS year_month,
+        SUM(CASE WHEN type = 'income' THEN amount WHEN type = 'expense' THEN -amount ELSE 0 END)::integer AS net_effect
+      FROM transactions
+      WHERE status = 'applied' AND date >= ${startDate}
+      GROUP BY to_char(date, 'YYYY-MM')
+      ORDER BY year_month
+    `) as unknown as Promise<Array<{ year_month: string; net_effect: number }>>,
+  ])
 
-  // 누적합으로 각 월 말 잔액 계산
-  const effectMap = new Map(rows.map((r) => [r.year_month, r.net_effect]))
-  const allMonthsSorted = Array.from(effectMap.keys()).sort()
+  const totalInitialBalance = balanceRows[0]?.total ?? 0
+  const priorEffect = priorRows[0]?.prior_effect ?? 0
+  const effectMap = new Map(monthlyRows.map((r) => [r.year_month, r.net_effect]))
 
-  let cumulativeBalance = totalInitialBalance
-  const endOfMonthBalance = new Map<string, number>()
-
-  for (const ym of allMonthsSorted) {
-    cumulativeBalance += effectMap.get(ym)!
-    endOfMonthBalance.set(ym, cumulativeBalance)
-  }
-
-  // 요청된 월 범위의 잔액 추출
-  const points: NetWorthPoint[] = []
-  let lastBalance = totalInitialBalance
-
-  for (const ym of allMonthsSorted) {
-    if (ym >= monthList[0]) break
-    lastBalance = endOfMonthBalance.get(ym)!
-  }
-
-  for (const ym of monthList) {
-    if (endOfMonthBalance.has(ym)) {
-      lastBalance = endOfMonthBalance.get(ym)!
-    }
-    points.push({ yearMonth: ym, totalBalance: lastBalance })
-  }
+  // 누적합으로 요청된 월 범위의 잔액 계산
+  let cumulativeBalance = totalInitialBalance + priorEffect
+  const points: NetWorthPoint[] = monthList.map((ym) => {
+    cumulativeBalance += effectMap.get(ym) ?? 0
+    return { yearMonth: ym, totalBalance: cumulativeBalance }
+  })
 
   return successResponse(points)
 }
@@ -198,16 +190,6 @@ function generatePastMonths(now: Date, count: number): string[] {
   }
 
   return result
-}
-
-// === Date Helpers ===
-
-function monthDateRange(year: number, month: number) {
-  const start = `${year}-${String(month).padStart(2, '0')}-01`
-  const nextMonth = month === 12 ? 1 : month + 1
-  const nextYear = month === 12 ? year + 1 : year
-  const end = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`
-  return { start, end }
 }
 
 function nextMonthStart(yearMonth: string): string {

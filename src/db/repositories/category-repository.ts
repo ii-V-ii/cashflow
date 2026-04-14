@@ -1,4 +1,4 @@
-import { eq, isNull, and, sql } from 'drizzle-orm'
+import { eq, isNull, and, sql, inArray } from 'drizzle-orm'
 import { getDb } from '../index'
 import { categories, transactions } from '../schema'
 import { generateId } from '../../lib/utils'
@@ -82,7 +82,7 @@ export async function createCategory(input: CreateCategoryInput) {
     }
   }
 
-  await db.insert(categories)
+  const [result] = await db.insert(categories)
     .values({
       id,
       name: input.name,
@@ -93,8 +93,9 @@ export async function createCategory(input: CreateCategoryInput) {
       parentId: input.parentId ?? null,
       sortOrder,
     })
+    .returning()
 
-  return (await findCategoryById(id))!
+  return result
 }
 
 export async function updateCategory(id: string, input: UpdateCategoryInput) {
@@ -102,7 +103,7 @@ export async function updateCategory(id: string, input: UpdateCategoryInput) {
   const existing = await findCategoryById(id)
   if (!existing) return null
 
-  await db.update(categories)
+  const [result] = await db.update(categories)
     .set({
       ...(input.name !== undefined && { name: input.name }),
       ...(input.type !== undefined && { type: input.type }),
@@ -113,8 +114,9 @@ export async function updateCategory(id: string, input: UpdateCategoryInput) {
       ...(input.sortOrder !== undefined && { sortOrder: input.sortOrder }),
     })
     .where(eq(categories.id, id))
+    .returning()
 
-  return (await findCategoryById(id))!
+  return result
 }
 
 export async function hasTransactions(categoryId: string): Promise<boolean> {
@@ -134,15 +136,20 @@ export async function deleteCategory(id: string): Promise<{ deleted: boolean; er
   // 대분류인 경우: 소분류 확인
   const children = await findSubcategories(id)
 
-  // 소분류 중 거래가 있는 것이 있는지 확인
-  for (const child of children) {
-    if (await hasTransactions(child.id)) {
-      return { deleted: false, error: `소분류 "${child.name}"에 거래가 존재하여 삭제할 수 없습니다` }
-    }
-  }
+  // 소분류 + 본인에게 거래가 있는지 IN절로 한 번에 확인
+  const allIds = [...children.map(c => c.id), id]
+  const txRows = await db
+    .select({ categoryId: transactions.categoryId })
+    .from(transactions)
+    .where(inArray(transactions.categoryId, allIds))
+    .limit(1)
 
-  // 본인에게 거래가 있는지 확인
-  if (await hasTransactions(id)) {
+  if (txRows.length > 0) {
+    const blockedId = txRows[0].categoryId
+    const blockedChild = children.find(c => c.id === blockedId)
+    if (blockedChild) {
+      return { deleted: false, error: `소분류 "${blockedChild.name}"에 거래가 존재하여 삭제할 수 없습니다` }
+    }
     return { deleted: false, error: '이 카테고리에 거래가 존재하여 삭제할 수 없습니다' }
   }
 

@@ -18,18 +18,21 @@ export async function findAllTransactions(
 
   const conditions = buildFilterConditions(filter)
 
-  const rows = await db
-    .select()
-    .from(transactions)
-    .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .orderBy(desc(transactions.date), desc(transactions.createdAt))
-    .limit(limit)
-    .offset(offset)
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined
 
-  const countRows = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(transactions)
-    .where(conditions.length > 0 ? and(...conditions) : undefined)
+  const [rows, countRows] = await Promise.all([
+    db
+      .select()
+      .from(transactions)
+      .where(whereClause)
+      .orderBy(desc(transactions.date), desc(transactions.createdAt))
+      .limit(limit)
+      .offset(offset),
+    db
+      .select({ count: sql<number>`count(*)` })
+      .from(transactions)
+      .where(whereClause),
+  ])
 
   const total = countRows[0]?.count ?? 0
 
