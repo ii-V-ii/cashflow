@@ -12,7 +12,7 @@ import {
 } from "recharts"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { formatCurrency } from "@/lib/utils"
-import type { BudgetItemWithActual } from "@/types"
+import type { BudgetItemWithActual, CategorySubtotal } from "@/types"
 
 const COLORS = [
   "#3b82f6", "#ef4444", "#22c55e", "#f59e0b", "#8b5cf6",
@@ -22,6 +22,7 @@ const COLORS = [
 
 interface BudgetComparisonProps {
   items: readonly BudgetItemWithActual[]
+  actualCategories?: readonly CategorySubtotal[]
 }
 
 interface ParentGroup {
@@ -31,10 +32,10 @@ interface ParentGroup {
   children: { name: string; planned: number; actual: number }[]
 }
 
-export function BudgetComparison({ items }: BudgetComparisonProps) {
+export function BudgetComparison({ items, actualCategories }: BudgetComparisonProps) {
   const groups = useMemo(() => {
     const expenseItems = items.filter(
-      (item) => item.categoryType === "expense" && item.plannedAmount > 0,
+      (item) => item.categoryType === "expense",
     )
 
     // 대분류별 그룹핑
@@ -62,8 +63,23 @@ export function BudgetComparison({ items }: BudgetComparisonProps) {
       }
     }
 
+    // 예산 없는 실적 카테고리 추가
+    if (actualCategories) {
+      const budgetCategoryIds = new Set(expenseItems.map((i) => i.categoryId))
+      for (const ac of actualCategories) {
+        if (!budgetCategoryIds.has(ac.categoryId) && ac.amount > 0) {
+          parentMap.set(ac.categoryId, {
+            name: ac.categoryName,
+            planned: 0,
+            actual: ac.amount,
+            children: [],
+          })
+        }
+      }
+    }
+
     return Array.from(parentMap.values())
-  }, [items])
+  }, [items, actualCategories])
 
   // 스택형 차트 데이터: 대분류별 행, 소분류별 스택
   const { chartData, allChildNames } = useMemo(() => {

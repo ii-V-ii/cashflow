@@ -138,20 +138,26 @@ export async function getActualsByYearMonth(year: number, month: number) {
   const db = getDb()
   const { start, end } = monthDateRange(year, month)
 
-  // 소분류→대분류 롤업: 예산은 대분류 기준이므로 소분류 실적을 대분류로 합산
-  // M-2: SUM()::integer 캐스팅
-  // H-2: status='applied' 필터
+  // 소분류 기준 + 대분류 롤업 모두 반환
+  // 소분류 ID로 매칭하고, 대분류 ID로도 매칭할 수 있도록
   const rows = await db.execute(sql`
-    SELECT
-      COALESCE(c.parent_id, t.category_id) AS category_id,
-      t.type,
-      SUM(t.amount)::integer AS total
-    FROM transactions t
-    LEFT JOIN categories c ON t.category_id = c.id
-    WHERE t.date >= ${start} AND t.date < ${end}
-      AND t.type IN ('income', 'expense')
-      AND t.status = 'applied'
-    GROUP BY COALESCE(c.parent_id, t.category_id), t.type
+    SELECT category_id, type, SUM(amount)::integer AS total
+    FROM (
+      SELECT t.category_id, t.type, t.amount
+      FROM transactions t
+      WHERE t.date >= ${start} AND t.date < ${end}
+        AND t.type IN ('income', 'expense')
+        AND t.status = 'applied'
+      UNION ALL
+      SELECT COALESCE(c.parent_id, t.category_id) AS category_id, t.type, t.amount
+      FROM transactions t
+      LEFT JOIN categories c ON t.category_id = c.id
+      WHERE t.date >= ${start} AND t.date < ${end}
+        AND t.type IN ('income', 'expense')
+        AND t.status = 'applied'
+        AND c.parent_id IS NOT NULL
+    ) sub
+    GROUP BY category_id, type
   `)
 
   return rows as unknown as Array<{ category_id: string | null; type: string; total: number }>

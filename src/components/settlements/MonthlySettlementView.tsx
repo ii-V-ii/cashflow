@@ -149,7 +149,10 @@ export function MonthlySettlementView({
 
       {/* 예산 vs 실적 비교 차트 */}
       {budgetDetail && budgetDetail.items.length > 0 && (
-        <BudgetComparison items={budgetDetail.items} />
+        <BudgetComparison
+          items={budgetDetail.items}
+          actualCategories={data.expenseByCategory}
+        />
       )}
 
       {/* 계좌별 변동 */}
