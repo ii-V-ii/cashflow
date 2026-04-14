@@ -26,7 +26,13 @@ import {
 } from "@/hooks/use-accounts";
 import { useAssets, useUpdateAsset } from "@/hooks/use-assets";
 import { formatKRW } from "@/lib/format";
-import type { Account, AccountType, Asset } from "@/types";
+import {
+  calculateLumpSumDeposit,
+  calculateInstallmentSavings,
+  calculateMaturityDate,
+  calculateDaysUntilMaturity,
+} from "@/lib/calculations/deposit-calculator";
+import type { Account, AccountType, Asset, TaxType } from "@/types";
 import type { CreateAccountInput } from "@/lib/validators/account";
 
 const ACCOUNT_TYPE_ORDER: AccountType[] = [
@@ -235,6 +241,14 @@ export default function AccountsPage() {
                           </Button>
                           </div>
                         </div>
+                        {account.depositType &&
+                          account.openDate &&
+                          account.termMonths &&
+                          account.interestRate !== null &&
+                          account.interestRate !== undefined &&
+                          account.taxType && (
+                            <DepositMaturityInfo account={account} />
+                          )}
                         {assetsByAccount.get(account.id)?.map((asset) => (
                           <div
                             key={asset.id}
@@ -336,6 +350,71 @@ export default function AccountsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+function DepositMaturityInfo({
+  account,
+}: {
+  account: Account;
+}) {
+  const {
+    depositType,
+    openDate,
+    termMonths,
+    interestRate,
+    taxType,
+    monthlyPayment,
+    currentBalance,
+  } = account;
+
+  if (!depositType || !openDate || !termMonths || interestRate === null || interestRate === undefined || !taxType) {
+    return null;
+  }
+
+  const maturityDate = calculateMaturityDate(openDate, termMonths);
+  const daysLeft = calculateDaysUntilMaturity(maturityDate);
+  const isMatured = daysLeft <= 0;
+
+  const result =
+    depositType === "lump_sum"
+      ? calculateLumpSumDeposit(currentBalance, interestRate, termMonths, taxType as TaxType)
+      : monthlyPayment
+        ? calculateInstallmentSavings(monthlyPayment, interestRate, termMonths, taxType as TaxType)
+        : null;
+
+  if (!result) return null;
+
+  return (
+    <div className="rounded-lg border border-dashed border-border bg-muted/30 p-2.5 text-xs space-y-1.5">
+      <div className="flex items-center justify-between">
+        <span className="text-muted-foreground">만기일</span>
+        <span className="font-medium">
+          {maturityDate}{" "}
+          {isMatured ? (
+            <Badge variant="secondary" className="ml-1 text-[10px] px-1 py-0">
+              만기됨
+            </Badge>
+          ) : (
+            <span className="text-muted-foreground">(D-{daysLeft})</span>
+          )}
+        </span>
+      </div>
+      <div className="flex items-center justify-between">
+        <span className="text-muted-foreground">예상 세전이자</span>
+        <span>{formatKRW(result.interest)}</span>
+      </div>
+      <div className="flex items-center justify-between">
+        <span className="text-muted-foreground">예상 세후이자</span>
+        <span className="font-medium text-green-600 dark:text-green-400">
+          {formatKRW(result.afterTaxInterest)}
+        </span>
+      </div>
+      <div className="flex items-center justify-between border-t border-border pt-1.5">
+        <span className="text-muted-foreground">만기 수령액</span>
+        <span className="font-semibold">{formatKRW(result.totalAtMaturity)}</span>
+      </div>
     </div>
   );
 }

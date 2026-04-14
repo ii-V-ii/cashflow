@@ -25,6 +25,10 @@ export interface Transaction {
 
 export type AccountType = 'cash' | 'bank' | 'card' | 'savings' | 'investment'
 
+export type DepositType = 'lump_sum' | 'installment'
+
+export type TaxType = 'normal' | 'preferential' | 'tax_free' | 'high'
+
 export interface Account {
   readonly id: string
   readonly name: string
@@ -34,6 +38,12 @@ export interface Account {
   readonly icon: string | null
   readonly isActive: boolean
   readonly sortOrder: number
+  readonly depositType: DepositType | null
+  readonly termMonths: number | null
+  readonly interestRate: number | null // 연이율 %
+  readonly taxType: TaxType | null
+  readonly openDate: string | null // YYYY-MM-DD
+  readonly monthlyPayment: number | null
   readonly createdAt: Date
   readonly updatedAt: Date
 }

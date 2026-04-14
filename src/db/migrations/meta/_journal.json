@@ -43,6 +43,13 @@
       "when": 1776089359144,
       "tag": "0005_robust_randall",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1776126980650,
+      "tag": "0006_square_dreaming_celestial",
+      "breakpoints": true
     }
   ]
 }

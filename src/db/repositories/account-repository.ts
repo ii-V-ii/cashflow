@@ -32,6 +32,12 @@ export async function createAccount(input: CreateAccountInput) {
       currentBalance: input.balance ?? 0,
       color: input.color ?? null,
       icon: input.icon ?? null,
+      depositType: input.depositType ?? null,
+      termMonths: input.termMonths ?? null,
+      interestRate: input.interestRate ?? null,
+      taxType: input.taxType ?? null,
+      openDate: input.openDate ?? null,
+      monthlyPayment: input.monthlyPayment ?? null,
     })
 
   return (await findAccountById(id))!
@@ -49,6 +55,12 @@ export async function updateAccount(id: string, input: UpdateAccountInput) {
       ...(input.balance !== undefined && { currentBalance: input.balance }),
       ...(input.color !== undefined && { color: input.color }),
       ...(input.icon !== undefined && { icon: input.icon }),
+      ...(input.depositType !== undefined && { depositType: input.depositType }),
+      ...(input.termMonths !== undefined && { termMonths: input.termMonths }),
+      ...(input.interestRate !== undefined && { interestRate: input.interestRate ?? null }),
+      ...(input.taxType !== undefined && { taxType: input.taxType }),
+      ...(input.openDate !== undefined && { openDate: input.openDate }),
+      ...(input.monthlyPayment !== undefined && { monthlyPayment: input.monthlyPayment }),
     })
     .where(eq(accounts.id, id))
 
