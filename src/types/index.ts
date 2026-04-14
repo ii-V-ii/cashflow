@@ -38,6 +38,7 @@ export interface Account {
   readonly icon: string | null
   readonly isActive: boolean
   readonly sortOrder: number
+  readonly assetId: string | null
   readonly depositType: DepositType | null
   readonly termMonths: number | null
   readonly interestRate: number | null // 연이율 %
@@ -278,7 +279,6 @@ export interface Asset {
   readonly acquisitionDate: string // YYYY-MM-DD
   readonly acquisitionCost: number // KRW 정수
   readonly currentValue: number // KRW 정수
-  readonly accountId: string | null
   readonly institution: string | null
   readonly memo: string | null
   readonly isActive: boolean

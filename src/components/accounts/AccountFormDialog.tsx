@@ -24,6 +24,7 @@ import {
   type CreateAccountInput,
   type CreateAccountFormInput,
 } from "@/lib/validators/account";
+import { useAssets } from "@/hooks/use-assets";
 import type { Account, AccountType, DepositType, TaxType } from "@/types";
 
 const ACCOUNT_TYPE_LABELS: Record<AccountType, string> = {
@@ -69,6 +70,7 @@ export function AccountFormDialog({
   onSubmit,
   isPending,
 }: AccountFormDialogProps) {
+  const { data: assetsData } = useAssets();
   const {
     register,
     handleSubmit,
@@ -85,6 +87,7 @@ export function AccountFormDialog({
       balance: 0,
       color: null,
       icon: null,
+      assetId: null,
       depositType: null,
       termMonths: null,
       interestRate: null,
@@ -104,6 +107,7 @@ export function AccountFormDialog({
               balance: account.currentBalance,
               color: account.color,
               icon: account.icon,
+              assetId: account.assetId,
               depositType: account.depositType,
               termMonths: account.termMonths,
               interestRate: account.interestRate,
@@ -117,6 +121,7 @@ export function AccountFormDialog({
               balance: 0,
               color: null,
               icon: null,
+              assetId: null,
               depositType: null,
               termMonths: null,
               interestRate: null,
@@ -360,6 +365,38 @@ export function AccountFormDialog({
                 {errors.balance.message}
               </p>
             )}
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <label className="text-sm font-medium">연결 자산 (선택)</label>
+            <Controller
+              name="assetId"
+              control={control}
+              render={({ field }) => (
+                <Select
+                  value={field.value ?? "__none__"}
+                  onValueChange={(v) => field.onChange(v === "__none__" ? null : v)}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="없음">
+                      {(value: string) => {
+                        if (value === "__none__") return "없음"
+                        const asset = (assetsData ?? []).find((a) => a.id === value)
+                        return asset?.name ?? "없음"
+                      }}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">없음</SelectItem>
+                    {(assetsData ?? []).map((asset) => (
+                      <SelectItem key={asset.id} value={asset.id}>
+                        {asset.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
           </div>
 
           <div className="flex flex-col gap-2">

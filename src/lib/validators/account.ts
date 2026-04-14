@@ -12,6 +12,7 @@ export const createAccountSchema = z.object({
   taxType: z.enum(['normal', 'preferential', 'tax_free', 'high']).nullable().optional().default(null),
   openDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional().default(null),
   monthlyPayment: z.number().int().positive().nullable().optional().default(null),
+  assetId: z.string().nullable().optional().default(null),
 })
 
 export const updateAccountSchema = createAccountSchema.partial()

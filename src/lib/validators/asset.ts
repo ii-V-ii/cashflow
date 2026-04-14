@@ -6,7 +6,6 @@ export const createAssetSchema = z.object({
   acquisitionDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   acquisitionCost: z.number().int().min(0),
   currentValue: z.number().int().min(0),
-  accountId: z.string().nullable().optional().default(null),
   institution: z.string().max(100).nullable().optional().default(null),
   memo: z.string().max(500).nullable().optional().default(null),
   isActive: z.boolean().optional().default(true),

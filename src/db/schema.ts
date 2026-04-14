@@ -41,6 +41,7 @@ export const accounts = pgTable(
     icon: text('icon'),
     isActive: boolean('is_active').notNull().default(true),
     sortOrder: integer('sort_order').notNull().default(0),
+    assetId: text('asset_id').references(() => assets.id, { onDelete: 'set null' }),
     depositType: text('deposit_type', { enum: ['lump_sum', 'installment'] }),
     termMonths: integer('term_months'),
     interestRate: numeric('interest_rate', { precision: 10, scale: 4, mode: 'number' }),
@@ -52,6 +53,7 @@ export const accounts = pgTable(
   },
   (table) => [
     index('idx_accounts_type').on(table.type),
+    index('idx_accounts_asset_id').on(table.assetId),
   ],
 )
 
@@ -190,7 +192,6 @@ export const assets = pgTable(
     acquisitionDate: date('acquisition_date').notNull(),
     acquisitionCost: integer('acquisition_cost').notNull(),
     currentValue: integer('current_value').notNull(),
-    accountId: text('account_id').references(() => accounts.id, { onDelete: 'set null' }),
     institution: text('institution'),
     memo: text('memo'),
     isActive: boolean('is_active').notNull().default(true),
@@ -200,9 +201,7 @@ export const assets = pgTable(
   },
   (table) => [
     index('idx_assets_asset_category_id').on(table.assetCategoryId),
-    index('idx_assets_account_id').on(table.accountId),
     index('idx_assets_is_active').on(table.isActive),
-    unique('uq_assets_account_id').on(table.accountId),
   ],
 )
 

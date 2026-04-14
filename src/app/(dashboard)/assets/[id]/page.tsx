@@ -1,6 +1,6 @@
 "use client"
 
-import { use, useCallback } from "react"
+import { use, useCallback, useMemo } from "react"
 import Link from "next/link"
 import { ArrowLeft, TrendingUp, TrendingDown, Link2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -33,7 +33,10 @@ export default function AssetDetailPage({ params }: AssetDetailPageProps) {
   const { data: accounts } = useAccounts()
   const createValuation = useCreateValuation()
 
-  const linkedAccount = accounts?.find((a) => a.id === asset?.accountId) ?? null
+  const linkedAccounts = useMemo(
+    () => (accounts ?? []).filter((a) => a.assetId === id),
+    [accounts, id],
+  )
 
   const handleValuationSubmit = useCallback(
     (data: CreateValuationInput) => {
@@ -185,10 +188,10 @@ export default function AssetDetailPage({ params }: AssetDetailPageProps) {
             <div>
               <dt className="text-muted-foreground">연결 계좌</dt>
               <dd className="font-medium">
-                {linkedAccount ? (
+                {linkedAccounts.length > 0 ? (
                   <span className="inline-flex items-center gap-1">
                     <Link2 className="size-3 text-muted-foreground" />
-                    {linkedAccount.name}
+                    {linkedAccounts.map(a => a.name).join(', ')}
                   </span>
                 ) : (
                   <span className="text-muted-foreground">없음</span>

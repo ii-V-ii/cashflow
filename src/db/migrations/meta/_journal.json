@@ -50,6 +50,13 @@
       "when": 1776126980650,
       "tag": "0006_square_dreaming_celestial",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1776153074715,
+      "tag": "0007_parallel_stingray",
+      "breakpoints": true
     }
   ]
 }

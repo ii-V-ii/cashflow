@@ -36,6 +36,19 @@ export default function AssetsPage() {
     return new Map(accounts.map((a) => [a.id, a.name]))
   }, [accounts])
 
+  // assetId → 연결된 계좌 이름 목록 (1자산:N계좌)
+  const linkedAccountNames = useMemo(() => {
+    if (!accounts) return new Map<string, string>()
+    const map = new Map<string, string[]>()
+    for (const account of accounts) {
+      if (!account.assetId) continue
+      const list = map.get(account.assetId) ?? []
+      list.push(account.name)
+      map.set(account.assetId, list)
+    }
+    return new Map(Array.from(map.entries()).map(([k, v]) => [k, v.join(', ')]))
+  }, [accounts])
+
   const categoryMap = useMemo(() => {
     if (!assetCategories) return new Map<string, { name: string; icon: string | null; kind: AssetCategoryKind }>()
     return new Map(assetCategories.map((c) => [c.id, { name: c.name, icon: c.icon, kind: c.kind }]))
@@ -274,10 +287,10 @@ export default function AssetsPage() {
                               {returnRate.toFixed(1)}%
                             </span>
                           </div>
-                          {asset.accountId && accountNameMap.get(asset.accountId) && (
+                          {linkedAccountNames.get(asset.id) && (
                             <div className="flex items-center gap-1 text-xs text-muted-foreground">
                               <Link2 className="size-3" />
-                              <span>{accountNameMap.get(asset.accountId)}</span>
+                              <span>{linkedAccountNames.get(asset.id)}</span>
                             </div>
                           )}
                           {asset.institution && (

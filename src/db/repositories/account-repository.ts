@@ -38,6 +38,7 @@ export async function createAccount(input: CreateAccountInput) {
       taxType: input.taxType ?? null,
       openDate: input.openDate ?? null,
       monthlyPayment: input.monthlyPayment ?? null,
+      assetId: input.assetId ?? null,
     })
 
   return (await findAccountById(id))!
@@ -61,6 +62,7 @@ export async function updateAccount(id: string, input: UpdateAccountInput) {
       ...(input.taxType !== undefined && { taxType: input.taxType }),
       ...(input.openDate !== undefined && { openDate: input.openDate }),
       ...(input.monthlyPayment !== undefined && { monthlyPayment: input.monthlyPayment }),
+      ...(input.assetId !== undefined && { assetId: input.assetId }),
     })
     .where(eq(accounts.id, id))
 

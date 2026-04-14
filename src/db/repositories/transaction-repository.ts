@@ -394,49 +394,46 @@ async function reverseBalanceChange(
   }
 }
 
-// C-2: UNIQUE(account_id) 후 단일 자산 조회로 단순화
+// 1자산:N계좌 — accounts.assetId로 자산 조회 후, 연결된 모든 계좌의 잔액 합계로 갱신
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function syncAssetFromAccount(accountId: string, tx?: any) {
   const executor = tx ?? getDb()
 
-  // 1. 해당 accountId에 연결된 단일 자산 조회 (UNIQUE 제약)
-  const linkedRows = await executor
-    .select({ id: assets.id })
-    .from(assets)
-    .where(eq(assets.accountId, accountId))
-    .limit(1)
-
-  const linkedAsset = linkedRows[0]
-  if (!linkedAsset) return
-
-  // 2. 계좌의 현재 잔액 조회 (이미 갱신된 상태)
+  // 1. 해당 계좌의 assetId 조회
   const accountRows = await executor
-    .select({ currentBalance: accounts.currentBalance })
+    .select({ assetId: accounts.assetId })
     .from(accounts)
     .where(eq(accounts.id, accountId))
 
-  const newBalance = accountRows[0]?.currentBalance
-  if (newBalance === undefined) return
+  const assetId = accountRows[0]?.assetId
+  if (!assetId) return
 
+  // 2. 해당 자산에 연결된 모든 계좌의 잔액 합계
+  const sumRows = await executor
+    .select({ total: sql<number>`COALESCE(SUM(current_balance), 0)::integer` })
+    .from(accounts)
+    .where(eq(accounts.assetId, assetId))
+
+  const totalBalance = sumRows[0]?.total ?? 0
   const today = format(new Date(), 'yyyy-MM-dd')
 
-  // 3. 단일 자산 currentValue 갱신 + 평가이력 upsert
+  // 3. 자산 currentValue 갱신 + 평가이력 upsert
   await executor
     .update(assets)
-    .set({ currentValue: newBalance })
-    .where(eq(assets.id, linkedAsset.id))
+    .set({ currentValue: totalBalance })
+    .where(eq(assets.id, assetId))
 
   await executor
     .insert(assetValuations)
     .values({
       id: generateId(),
-      assetId: linkedAsset.id,
+      assetId,
       date: today,
-      value: newBalance,
+      value: totalBalance,
       source: 'auto',
     })
     .onConflictDoUpdate({
       target: [assetValuations.assetId, assetValuations.date],
-      set: { value: newBalance, source: 'auto' },
+      set: { value: totalBalance, source: 'auto' },
     })
 }

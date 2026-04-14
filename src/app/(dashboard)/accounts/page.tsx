@@ -24,7 +24,7 @@ import {
   useUpdateAccount,
   useDeleteAccount,
 } from "@/hooks/use-accounts";
-import { useAssets, useUpdateAsset } from "@/hooks/use-assets";
+import { useAssets } from "@/hooks/use-assets";
 import { formatKRW } from "@/lib/format";
 import {
   calculateLumpSumDeposit,
@@ -49,20 +49,21 @@ export default function AccountsPage() {
   const createMutation = useCreateAccount();
 
   const assetsByAccount = useMemo(() => {
-    if (!assets) return new Map<string, Asset[]>();
+    if (!assets || !accounts) return new Map<string, Asset[]>();
+    const assetMap = new Map(assets.map(a => [a.id, a]));
     const map = new Map<string, Asset[]>();
-    for (const asset of assets) {
-      if (!asset.accountId) continue;
-      const list = map.get(asset.accountId) ?? [];
+    for (const account of accounts) {
+      if (!account.assetId) continue;
+      const asset = assetMap.get(account.assetId);
+      if (!asset) continue;
+      const list = map.get(account.id) ?? [];
       list.push(asset);
-      map.set(asset.accountId, list);
+      map.set(account.id, list);
     }
     return map;
-  }, [assets]);
+  }, [assets, accounts]);
   const updateMutation = useUpdateAccount();
   const deleteMutation = useDeleteAccount();
-
-  const updateAsset = useUpdateAsset();
 
   const [formOpen, setFormOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
@@ -70,16 +71,16 @@ export default function AccountsPage() {
   const [linkAccountId, setLinkAccountId] = useState<string | null>(null);
   const [selectedAssetId, setSelectedAssetId] = useState("");
 
-  // 미연결 자산 (accountId가 null인 자산)
-  const unlinkedAssets = useMemo(
-    () => (assets ?? []).filter((a) => a.accountId === null),
-    [assets],
-  );
+  // 미연결 자산 (어떤 계좌에서도 참조하지 않는 자산)
+  const unlinkedAssets = useMemo(() => {
+    const linkedIds = new Set((accounts ?? []).filter(a => a.assetId).map(a => a.assetId!));
+    return (assets ?? []).filter((a) => !linkedIds.has(a.id));
+  }, [assets, accounts]);
 
   const handleLinkAsset = useCallback(() => {
     if (!linkAccountId || !selectedAssetId) return;
-    updateAsset.mutate(
-      { id: selectedAssetId, data: { accountId: linkAccountId } },
+    updateMutation.mutate(
+      { id: linkAccountId, data: { assetId: selectedAssetId } },
       {
         onSuccess: () => {
           setLinkAccountId(null);
@@ -87,13 +88,13 @@ export default function AccountsPage() {
         },
       },
     );
-  }, [linkAccountId, selectedAssetId, updateAsset]);
+  }, [linkAccountId, selectedAssetId, updateMutation]);
 
   const handleUnlinkAsset = useCallback(
-    (assetId: string) => {
-      updateAsset.mutate({ id: assetId, data: { accountId: null } });
+    (accountId: string) => {
+      updateMutation.mutate({ id: accountId, data: { assetId: null } });
     },
-    [updateAsset],
+    [updateMutation],
   );
 
   const grouped = useMemo(() => {
@@ -260,7 +261,7 @@ export default function AccountsPage() {
                               variant="ghost"
                               size="icon-sm"
                               className="size-5"
-                              onClick={() => handleUnlinkAsset(asset.id)}
+                              onClick={() => handleUnlinkAsset(account.id)}
                               aria-label={`${asset.name} 연결 해제`}
                             >
                               <Unlink className="size-3 text-muted-foreground" />
@@ -343,9 +344,9 @@ export default function AccountsPage() {
             </Button>
             <Button
               onClick={handleLinkAsset}
-              disabled={!selectedAssetId || updateAsset.isPending}
+              disabled={!selectedAssetId || updateMutation.isPending}
             >
-              {updateAsset.isPending ? "연결 중..." : "연결"}
+              {updateMutation.isPending ? "연결 중..." : "연결"}
             </Button>
           </DialogFooter>
         </DialogContent>
