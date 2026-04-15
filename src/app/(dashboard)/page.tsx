@@ -19,7 +19,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { useDashboard } from "@/hooks/use-dashboard"
 import { useAssets } from "@/hooks/use-assets"
-import { useInvestmentSummary } from "@/hooks/use-investments"
+import { useAnnualTradeReport } from "@/hooks/use-investment-trades"
 import { formatCurrency } from "@/lib/utils"
 
 export default function DashboardPage() {
@@ -27,7 +27,7 @@ export default function DashboardPage() {
   const { data: assets } = useAssets()
 
   const now = new Date()
-  const { data: investmentSummary } = useInvestmentSummary(now.getFullYear())
+  const { data: tradeReport } = useAnnualTradeReport(now.getFullYear())
 
   // 순자산 계산
   const totalAssetValue = (assets ?? []).reduce((sum, a) => sum + a.currentValue, 0)
@@ -35,9 +35,9 @@ export default function DashboardPage() {
   const assetGain = totalAssetValue - totalAcquisitionCost
   const assetReturnRate = totalAcquisitionCost > 0 ? (assetGain / totalAcquisitionCost) * 100 : 0
 
-  // 투자 수익 계산
-  const investReturn = investmentSummary
-    ? investmentSummary.totalDividendIncome + investmentSummary.totalRealizedGain
+  // 투자 수익 계산 (매매 기록 기반)
+  const investReturn = tradeReport
+    ? tradeReport.totalRealizedGain + tradeReport.totalDividend
     : 0
 
   if (isLoading) {
@@ -96,8 +96,8 @@ export default function DashboardPage() {
           value={formatCurrency(investReturn)}
           valueClassName={investReturn >= 0 ? "text-emerald-600" : "text-rose-600"}
           sub={
-            investmentSummary
-              ? `배당 ${formatCurrency(investmentSummary.totalDividendIncome)} · 실현 ${formatCurrency(investmentSummary.totalRealizedGain)}`
+            tradeReport
+              ? `배당 ${formatCurrency(tradeReport.totalDividend)} · 실현 ${formatCurrency(tradeReport.totalRealizedGain)}`
               : undefined
           }
         />
