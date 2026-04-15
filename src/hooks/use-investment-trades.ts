@@ -1,7 +1,7 @@
 "use client"
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import type { InvestmentTrade, AssetInvestmentSummary } from "@/types"
+import type { InvestmentTrade, AssetInvestmentSummary, AnnualTradeReport } from "@/types"
 import type { CreateInvestmentTradeInput, UpdateInvestmentTradeInput } from "@/lib/validators/investment-trade"
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api-client"
 
@@ -33,6 +33,14 @@ export function useInvestmentTradeSummary(assetId: string, from?: string, to?: s
         `/api/investment-trades/summary?${params.toString()}`,
       ),
     enabled: !!assetId,
+  })
+}
+
+export function useAnnualTradeReport(year: number) {
+  return useQuery({
+    queryKey: [...TRADES_KEY, "annual", year],
+    queryFn: () =>
+      apiGet<AnnualTradeReport>(`/api/investment-trades/annual?year=${year}`),
   })
 }
 

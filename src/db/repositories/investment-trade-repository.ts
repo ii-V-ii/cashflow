@@ -85,6 +85,61 @@ export async function deleteInvestmentTrade(id: string) {
   return existing
 }
 
+export async function getMonthlyTradeSummary(year: number) {
+  const db = getDb()
+  const from = `${year}-01-01`
+  const to = `${year + 1}-01-01`
+
+  const rows = await db.execute(sql`
+    WITH buy_avg AS (
+      SELECT ticker,
+        COALESCE(SUM(total_amount), 0) AS total_amt,
+        COALESCE(SUM(quantity), 0) AS total_qty
+      FROM investment_trades
+      WHERE trade_type = 'buy' AND date < ${to}
+      GROUP BY ticker
+    ),
+    monthly AS (
+      SELECT
+        EXTRACT(MONTH FROM date)::integer AS month,
+        trade_type,
+        ticker,
+        COALESCE(SUM(total_amount), 0)::integer AS total_amount,
+        COALESCE(SUM(net_amount), 0)::integer AS total_net,
+        COALESCE(SUM(quantity), 0) AS total_qty
+      FROM investment_trades
+      WHERE date >= ${from} AND date < ${to}
+      GROUP BY EXTRACT(MONTH FROM date), trade_type, ticker
+    )
+    SELECT
+      m.month,
+      COALESCE(SUM(CASE WHEN m.trade_type = 'buy' THEN m.total_amount END), 0)::integer AS total_bought,
+      COALESCE(SUM(CASE WHEN m.trade_type = 'sell' THEN m.total_net END), 0)::integer AS total_sold,
+      COALESCE(SUM(CASE WHEN m.trade_type = 'dividend' THEN m.total_net END), 0)::integer AS total_dividend,
+      COALESCE(SUM(CASE WHEN m.trade_type = 'sell' THEN
+        m.total_net - CASE WHEN b.total_qty > 0 THEN ROUND(b.total_amt::numeric / b.total_qty * m.total_qty) ELSE 0 END
+      END), 0)::integer AS realized_gain
+    FROM monthly m
+    LEFT JOIN buy_avg b ON b.ticker = m.ticker
+    GROUP BY m.month
+    ORDER BY m.month
+  `) as unknown as Array<{
+    month: number
+    total_bought: number
+    total_sold: number
+    total_dividend: number
+    realized_gain: number
+  }>
+
+  return rows.map(r => ({
+    month: r.month,
+    totalBought: r.total_bought,
+    totalSold: r.total_sold,
+    totalDividend: r.total_dividend,
+    realizedGain: r.realized_gain,
+  }))
+}
+
 export async function getAssetTradeSummary(assetId: string, from?: string, to?: string) {
   const db = getDb()
   const isMonthly = !!(from && to)

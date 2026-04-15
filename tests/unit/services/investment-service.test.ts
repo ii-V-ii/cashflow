@@ -9,6 +9,7 @@ vi.mock('@/db/repositories', () => ({
   findAllInvestmentTrades: vi.fn(),
   updateInvestmentTrade: vi.fn(),
   getAssetTradeSummary: vi.fn(),
+  getMonthlyTradeSummary: vi.fn(),
   updateAccountBalance: vi.fn(),
   syncAssetFromAccount: vi.fn(),
 }))
@@ -32,6 +33,7 @@ import {
   deleteTradeService,
   getInvestmentTradesService,
   getAssetInvestmentSummaryService,
+  getAnnualTradeReportService,
 } from '@/lib/services/investment-service'
 import * as repos from '@/db/repositories'
 
@@ -232,5 +234,51 @@ describe('getAssetInvestmentSummaryService', () => {
 
     await getAssetInvestmentSummaryService('asset_1', '2026-04-01', '2026-05-01')
     expect(mockRepos.getAssetTradeSummary).toHaveBeenCalledWith('asset_1', '2026-04-01', '2026-05-01')
+  })
+})
+
+describe('getAnnualTradeReportService', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('12개월 월별 매매 집계를 반환한다', async () => {
+    mockRepos.getMonthlyTradeSummary.mockResolvedValue([
+      { month: 3, totalBought: 3000000, totalSold: 1500000, totalDividend: 0, realizedGain: 50000 },
+      { month: 4, totalBought: 2000000, totalSold: 1800000, totalDividend: 100000, realizedGain: -20000 },
+    ])
+
+    const result = await getAnnualTradeReportService(2026)
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.year).toBe(2026)
+      expect(result.data.months).toHaveLength(12)
+
+      // 3월 데이터 확인
+      const mar = result.data.months[2]
+      expect(mar.month).toBe(3)
+      expect(mar.totalBought).toBe(3000000)
+      expect(mar.realizedGain).toBe(50000)
+
+      // 데이터 없는 1월은 0
+      const jan = result.data.months[0]
+      expect(jan.totalBought).toBe(0)
+      expect(jan.totalSold).toBe(0)
+
+      // 연간 합계
+      expect(result.data.totalBought).toBe(5000000)
+      expect(result.data.totalSold).toBe(3300000)
+      expect(result.data.totalDividend).toBe(100000)
+      expect(result.data.totalRealizedGain).toBe(30000)
+    }
+  })
+
+  it('매매가 없으면 전부 0이다', async () => {
+    mockRepos.getMonthlyTradeSummary.mockResolvedValue([])
+
+    const result = await getAnnualTradeReportService(2026)
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.totalBought).toBe(0)
+      expect(result.data.months.every(m => m.totalBought === 0)).toBe(true)
+    }
   })
 })

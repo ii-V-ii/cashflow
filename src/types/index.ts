@@ -393,6 +393,23 @@ export interface AssetInvestmentSummary {
   readonly totalReturn: number // 총 수익률 %
 }
 
+export interface MonthlyTradeSummaryRow {
+  readonly month: number
+  readonly totalBought: number
+  readonly totalSold: number
+  readonly totalDividend: number
+  readonly realizedGain: number
+}
+
+export interface AnnualTradeReport {
+  readonly year: number
+  readonly months: readonly MonthlyTradeSummaryRow[]
+  readonly totalBought: number
+  readonly totalSold: number
+  readonly totalDividend: number
+  readonly totalRealizedGain: number
+}
+
 // === Recurring Transaction ===
 
 export type RecurringFrequency = 'daily' | 'weekly' | 'monthly' | 'yearly'

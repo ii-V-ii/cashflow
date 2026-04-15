@@ -26,6 +26,7 @@ import { formatCurrency, formatDate } from "@/lib/utils"
 import {
   useInvestmentTrades,
   useInvestmentTradeSummary,
+  useAnnualTradeReport,
   useCreateTrade,
   useUpdateTrade,
   useDeleteTrade,
@@ -438,6 +439,10 @@ function SummaryTab({ assets, accounts }: SummaryTabProps) {
         )}
       </div>
 
+      {summaryMode === "year" && (
+        <AnnualTradeTable year={summaryYear} />
+      )}
+
       <div className="grid gap-4 sm:grid-cols-2">
         {investmentAssets.map((asset) => (
           <AssetSummaryCard
@@ -688,6 +693,69 @@ function TickerDetail({ assetId, assetName, from, to }: { assetId: string; asset
             })}
           </TabsContent>
         </Tabs>
+      </CardContent>
+    </Card>
+  )
+}
+
+function AnnualTradeTable({ year }: { year: number }) {
+  const { data: report, isLoading } = useAnnualTradeReport(year)
+
+  if (isLoading) return <Skeleton className="h-64" />
+  if (!report) return null
+
+  const MONTH_LABELS = ["1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월"]
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base">{year}년 월별 투자 요약</CardTitle>
+      </CardHeader>
+      <CardContent className="p-0">
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="min-w-16">월</TableHead>
+                <TableHead className="text-right">매수</TableHead>
+                <TableHead className="text-right">매도</TableHead>
+                <TableHead className="text-right">배당</TableHead>
+                <TableHead className="text-right">실현손익</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {report.months.map((m, i) => {
+                const hasData = m.totalBought > 0 || m.totalSold > 0 || m.totalDividend > 0
+                return (
+                  <TableRow key={m.month} className={hasData ? "" : "text-muted-foreground"}>
+                    <TableCell className="font-medium">{MONTH_LABELS[i]}</TableCell>
+                    <TableCell className="text-right font-mono text-sm">
+                      {hasData ? `${formatCurrency(m.totalBought)}` : "-"}
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-sm">
+                      {m.totalSold > 0 ? `${formatCurrency(m.totalSold)}` : "-"}
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-sm text-emerald-600">
+                      {m.totalDividend > 0 ? `${formatCurrency(m.totalDividend)}` : "-"}
+                    </TableCell>
+                    <TableCell className={`text-right font-mono text-sm font-semibold ${m.realizedGain >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                      {hasData ? `${formatCurrency(m.realizedGain)}` : "-"}
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
+              <TableRow className="border-t-2 font-semibold">
+                <TableCell>합계</TableCell>
+                <TableCell className="text-right font-mono text-sm">{formatCurrency(report.totalBought)}</TableCell>
+                <TableCell className="text-right font-mono text-sm">{formatCurrency(report.totalSold)}</TableCell>
+                <TableCell className="text-right font-mono text-sm text-emerald-600">{formatCurrency(report.totalDividend)}</TableCell>
+                <TableCell className={`text-right font-mono text-sm ${report.totalRealizedGain >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                  {formatCurrency(report.totalRealizedGain)}
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </div>
       </CardContent>
     </Card>
   )

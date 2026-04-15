@@ -13,6 +13,7 @@ import {
   findInvestmentTradeById,
   updateInvestmentTrade as updateInvestmentTradeRepo,
   getAssetTradeSummary,
+  getMonthlyTradeSummary,
   updateAccountBalance,
   findAccountById,
   syncAssetFromAccount,
@@ -27,7 +28,7 @@ import {
   updateInvestmentTradeSchema,
 } from '@/lib/validators'
 import { successResponse, errorResponse } from '@/lib/api-response'
-import type { ApiResponse, InvestmentSummary, AssetReturnSummary, AssetInvestmentSummary } from '@/types'
+import type { ApiResponse, InvestmentSummary, AssetReturnSummary, AssetInvestmentSummary, AnnualTradeReport, MonthlyTradeSummaryRow } from '@/types'
 
 export async function getInvestmentReturnsService(params?: {
   year?: number
@@ -309,4 +310,33 @@ export async function getAssetInvestmentSummaryService(
 
   const summary = await getAssetTradeSummary(assetId, from, to)
   return successResponse(summary)
+}
+
+export async function getAnnualTradeReportService(
+  year: number,
+): Promise<ApiResponse<AnnualTradeReport>> {
+  const rows = await getMonthlyTradeSummary(year)
+
+  const rowMap = new Map(rows.map(r => [r.month, r]))
+
+  const months: MonthlyTradeSummaryRow[] = Array.from({ length: 12 }, (_, i) => {
+    const month = i + 1
+    const row = rowMap.get(month)
+    return {
+      month,
+      totalBought: row?.totalBought ?? 0,
+      totalSold: row?.totalSold ?? 0,
+      totalDividend: row?.totalDividend ?? 0,
+      realizedGain: row?.realizedGain ?? 0,
+    }
+  })
+
+  return successResponse({
+    year,
+    months,
+    totalBought: months.reduce((s, m) => s + m.totalBought, 0),
+    totalSold: months.reduce((s, m) => s + m.totalSold, 0),
+    totalDividend: months.reduce((s, m) => s + m.totalDividend, 0),
+    totalRealizedGain: months.reduce((s, m) => s + m.realizedGain, 0),
+  })
 }
