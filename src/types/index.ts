@@ -359,6 +359,41 @@ export interface AssetReturnSummary {
   readonly averageReturnRate: number
 }
 
+// === Investment Trade ===
+
+export type TradeType = 'buy' | 'sell' | 'dividend'
+
+export interface InvestmentTrade {
+  readonly id: string
+  readonly assetId: string
+  readonly tradeType: TradeType
+  readonly date: string // YYYY-MM-DD
+  readonly ticker: string | null
+  readonly quantity: number // 수량 (소수점 4자리)
+  readonly unitPrice: number // KRW 정수
+  readonly totalAmount: number // KRW 정수
+  readonly fee: number // KRW 정수
+  readonly tax: number // KRW 정수
+  readonly netAmount: number // KRW 정수
+  readonly memo: string | null
+  readonly accountId: string | null
+  readonly createdAt: Date
+  readonly updatedAt: Date
+}
+
+export interface AssetInvestmentSummary {
+  readonly assetId: string
+  readonly assetName: string
+  readonly totalBought: number // 총 매수액
+  readonly totalSold: number // 총 매도 수령액
+  readonly totalDividend: number // 총 배당금
+  readonly totalQuantity: number // 보유 수량 (매수-매도)
+  readonly avgBuyPrice: number // 평균 매수단가
+  readonly realizedGain: number // 실현손익
+  readonly unrealizedGain: number // 미실현손익 (현재가치 - 보유수량×평균단가)
+  readonly totalReturn: number // 총 수익률 %
+}
+
 // === Recurring Transaction ===
 
 export type RecurringFrequency = 'daily' | 'weekly' | 'monthly' | 'yearly'

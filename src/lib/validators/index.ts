@@ -50,6 +50,14 @@ export {
 } from './investment'
 
 export {
+  tradeTypeEnum,
+  createInvestmentTradeSchema,
+  updateInvestmentTradeSchema,
+  type CreateInvestmentTradeInput,
+  type UpdateInvestmentTradeInput,
+} from './investment-trade'
+
+export {
   assetCategoryKindEnum,
   createAssetCategorySchema,
   updateAssetCategorySchema,

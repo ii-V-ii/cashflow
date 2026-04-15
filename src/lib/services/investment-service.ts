@@ -8,13 +8,23 @@ import {
   deleteInvestmentReturn,
   findAssetById,
   findAllAssets,
+  findAllInvestmentTrades,
+  findInvestmentTradeById,
+  createInvestmentTrade as createInvestmentTradeRepo,
+  updateInvestmentTrade as updateInvestmentTradeRepo,
+  deleteInvestmentTrade as deleteInvestmentTradeRepo,
+  getAssetTradeSummary,
+  updateAccountBalance,
+  findAccountById,
 } from '@/db/repositories'
 import {
   createInvestmentReturnSchema,
   updateInvestmentReturnSchema,
+  createInvestmentTradeSchema,
+  updateInvestmentTradeSchema,
 } from '@/lib/validators'
 import { successResponse, errorResponse } from '@/lib/api-response'
-import type { ApiResponse, InvestmentSummary, AssetReturnSummary } from '@/types'
+import type { ApiResponse, InvestmentSummary, AssetReturnSummary, AssetInvestmentSummary } from '@/types'
 
 export async function getInvestmentReturnsService(params?: {
   year?: number
@@ -169,4 +179,103 @@ export async function getInvestmentSummaryService(
     averageReturnRate,
     byAsset,
   })
+}
+
+// === Investment Trades ===
+
+export async function getInvestmentTradesService(
+  assetId?: string,
+): Promise<ApiResponse<Awaited<ReturnType<typeof findAllInvestmentTrades>>>> {
+  return successResponse(await findAllInvestmentTrades(assetId))
+}
+
+export async function getInvestmentTradeByIdService(
+  id: string,
+): Promise<ApiResponse<Awaited<ReturnType<typeof findInvestmentTradeById>>>> {
+  const trade = await findInvestmentTradeById(id)
+  if (!trade) {
+    return errorResponse('NOT_FOUND', '매매 기록을 찾을 수 없습니다')
+  }
+  return successResponse(trade)
+}
+
+export async function createTradeService(
+  input: unknown,
+): Promise<ApiResponse<Awaited<ReturnType<typeof findInvestmentTradeById>>>> {
+  const parsed = createInvestmentTradeSchema.safeParse(input)
+  if (!parsed.success) {
+    return errorResponse('VALIDATION_ERROR', parsed.error.issues[0]?.message ?? '입력값이 올바르지 않습니다')
+  }
+
+  const asset = await findAssetById(parsed.data.assetId)
+  if (!asset) {
+    return errorResponse('ASSET_NOT_FOUND', '자산을 찾을 수 없습니다')
+  }
+
+  // 계좌 잔액 연동
+  if (parsed.data.accountId) {
+    const account = await findAccountById(parsed.data.accountId)
+    if (!account) {
+      return errorResponse('ACCOUNT_NOT_FOUND', '계좌를 찾을 수 없습니다')
+    }
+
+    if (parsed.data.tradeType === 'buy') {
+      await updateAccountBalance(parsed.data.accountId, -parsed.data.totalAmount)
+    } else {
+      // sell, dividend: +netAmount
+      await updateAccountBalance(parsed.data.accountId, parsed.data.netAmount)
+    }
+  }
+
+  const trade = await createInvestmentTradeRepo(parsed.data)
+  return successResponse(trade)
+}
+
+export async function updateTradeService(
+  id: string,
+  input: unknown,
+): Promise<ApiResponse<Awaited<ReturnType<typeof findInvestmentTradeById>>>> {
+  const parsed = updateInvestmentTradeSchema.safeParse(input)
+  if (!parsed.success) {
+    return errorResponse('VALIDATION_ERROR', parsed.error.issues[0]?.message ?? '입력값이 올바르지 않습니다')
+  }
+
+  const trade = await updateInvestmentTradeRepo(id, parsed.data)
+  if (!trade) {
+    return errorResponse('NOT_FOUND', '매매 기록을 찾을 수 없습니다')
+  }
+  return successResponse(trade)
+}
+
+export async function deleteTradeService(
+  id: string,
+): Promise<ApiResponse<{ deleted: true }>> {
+  const trade = await deleteInvestmentTradeRepo(id)
+  if (!trade) {
+    return errorResponse('NOT_FOUND', '매매 기록을 찾을 수 없습니다')
+  }
+
+  // 계좌 잔액 역방향 복원
+  if (trade.accountId) {
+    if (trade.tradeType === 'buy') {
+      await updateAccountBalance(trade.accountId, trade.totalAmount)
+    } else {
+      // sell, dividend: 원래 +했던 금액을 -
+      await updateAccountBalance(trade.accountId, -trade.netAmount)
+    }
+  }
+
+  return successResponse({ deleted: true })
+}
+
+export async function getAssetInvestmentSummaryService(
+  assetId: string,
+): Promise<ApiResponse<AssetInvestmentSummary>> {
+  const asset = await findAssetById(assetId)
+  if (!asset) {
+    return errorResponse('ASSET_NOT_FOUND', '자산을 찾을 수 없습니다')
+  }
+
+  const summary = await getAssetTradeSummary(assetId)
+  return successResponse(summary)
 }

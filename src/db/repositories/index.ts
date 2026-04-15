@@ -83,6 +83,15 @@ export {
 } from './investment-return-repository'
 
 export {
+  findAllInvestmentTrades,
+  findInvestmentTradeById,
+  createInvestmentTrade,
+  updateInvestmentTrade,
+  deleteInvestmentTrade,
+  getAssetTradeSummary,
+} from './investment-trade-repository'
+
+export {
   findAllRecurringTransactions,
   findActiveRecurringTransactions,
   findDueRecurringTransactions,

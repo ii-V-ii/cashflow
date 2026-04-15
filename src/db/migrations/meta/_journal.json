@@ -64,6 +64,13 @@
       "when": 1776174607296,
       "tag": "0008_faulty_wither",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1776214071850,
+      "tag": "0009_petite_liz_osborn",
+      "breakpoints": true
     }
   ]
 }

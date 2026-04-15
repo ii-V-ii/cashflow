@@ -311,6 +311,34 @@ export const forecastResults = pgTable(
   ],
 )
 
+// === Investment Trades ===
+
+export const investmentTrades = pgTable(
+  'investment_trades',
+  {
+    id: text('id').primaryKey(),
+    assetId: text('asset_id').notNull().references(() => assets.id, { onDelete: 'cascade' }),
+    tradeType: text('trade_type', { enum: ['buy', 'sell', 'dividend'] }).notNull(),
+    date: date('date').notNull(),
+    ticker: text('ticker'),
+    quantity: numeric('quantity', { precision: 12, scale: 4, mode: 'number' }).notNull(),
+    unitPrice: integer('unit_price').notNull(),
+    totalAmount: integer('total_amount').notNull(),
+    fee: integer('fee').notNull().default(0),
+    tax: integer('tax').notNull().default(0),
+    netAmount: integer('net_amount').notNull(),
+    memo: text('memo'),
+    accountId: text('account_id').references(() => accounts.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  },
+  (table) => [
+    index('idx_investment_trades_asset_id').on(table.assetId),
+    index('idx_investment_trades_date').on(table.date),
+    index('idx_investment_trades_account_id').on(table.accountId),
+  ],
+)
+
 // === Investment Returns ===
 
 export const investmentReturns = pgTable(
