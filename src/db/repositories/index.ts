@@ -89,6 +89,7 @@ export {
   updateInvestmentTrade,
   deleteInvestmentTrade,
   getAssetTradeSummary,
+  getTickerSummaries,
   getMonthlyTradeSummary,
 } from './investment-trade-repository'
 

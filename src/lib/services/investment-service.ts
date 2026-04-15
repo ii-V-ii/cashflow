@@ -13,6 +13,7 @@ import {
   findInvestmentTradeById,
   updateInvestmentTrade as updateInvestmentTradeRepo,
   getAssetTradeSummary,
+  getTickerSummaries,
   getMonthlyTradeSummary,
   updateAccountBalance,
   findAccountById,
@@ -28,7 +29,7 @@ import {
   updateInvestmentTradeSchema,
 } from '@/lib/validators'
 import { successResponse, errorResponse } from '@/lib/api-response'
-import type { ApiResponse, InvestmentSummary, AssetReturnSummary, AssetInvestmentSummary, AnnualTradeReport, MonthlyTradeSummaryRow } from '@/types'
+import type { ApiResponse, InvestmentSummary, AssetReturnSummary, AssetInvestmentSummary, AnnualTradeReport, MonthlyTradeSummaryRow, TickerSummary } from '@/types'
 
 export async function getInvestmentReturnsService(params?: {
   year?: number
@@ -339,4 +340,18 @@ export async function getAnnualTradeReportService(
     totalDividend: months.reduce((s, m) => s + m.totalDividend, 0),
     totalRealizedGain: months.reduce((s, m) => s + m.realizedGain, 0),
   })
+}
+
+export async function getTickerSummariesService(
+  assetId: string,
+  from?: string,
+  to?: string,
+): Promise<ApiResponse<readonly TickerSummary[]>> {
+  const asset = await findAssetById(assetId)
+  if (!asset) {
+    return errorResponse('ASSET_NOT_FOUND', '자산을 찾을 수 없습니다')
+  }
+
+  const summaries = await getTickerSummaries(assetId, from, to)
+  return successResponse(summaries)
 }

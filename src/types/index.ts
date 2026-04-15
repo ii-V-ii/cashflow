@@ -393,6 +393,16 @@ export interface AssetInvestmentSummary {
   readonly totalReturn: number // 총 수익률 %
 }
 
+export interface TickerSummary {
+  readonly ticker: string
+  readonly holdingQty: number
+  readonly avgBuyPrice: number
+  readonly totalBuyAmount: number
+  readonly totalSellNet: number
+  readonly totalDividend: number
+  readonly realizedGain: number
+}
+
 export interface MonthlyTradeSummaryRow {
   readonly month: number
   readonly totalBought: number

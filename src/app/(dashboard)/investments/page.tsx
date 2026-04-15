@@ -26,6 +26,7 @@ import { formatCurrency, formatDate } from "@/lib/utils"
 import {
   useInvestmentTrades,
   useInvestmentTradeSummary,
+  useTickerSummaries,
   useAnnualTradeReport,
   useCreateTrade,
   useUpdateTrade,
@@ -513,6 +514,7 @@ function AssetSummaryCard({ assetId, from, to, isSelected, onSelect }: { assetId
 
 // 종목별 상세
 function TickerDetail({ assetId, assetName, from, to }: { assetId: string; assetName: string; from?: string; to?: string }) {
+  const { data: tickerSummaries } = useTickerSummaries(assetId, from, to)
   const { data: trades } = useInvestmentTrades(assetId, from, to)
   const [expandedTickers, setExpandedTickers] = useState<Set<string>>(new Set())
 
@@ -525,43 +527,29 @@ function TickerDetail({ assetId, assetName, from, to }: { assetId: string; asset
     })
   }, [])
 
+  // 백엔드 ticker 요약 + 기간 내 거래 목록 매핑
   const tickerGroups = useMemo(() => {
-    if (!trades) return []
-    const map = new Map<string, typeof trades>()
-    for (const t of trades) {
+    if (!tickerSummaries) return []
+
+    const tradesByTicker = new Map<string, NonNullable<typeof trades>>()
+    for (const t of trades ?? []) {
       const key = t.ticker || "(종목명 없음)"
-      const list = map.get(key) ?? []
+      const list = tradesByTicker.get(key) ?? []
       list.push(t)
-      map.set(key, list)
+      tradesByTicker.set(key, list)
     }
 
-    return Array.from(map.entries()).map(([ticker, items]) => {
-      const buys = items.filter((t) => t.tradeType === "buy")
-      const sells = items.filter((t) => t.tradeType === "sell")
-      const dividends = items.filter((t) => t.tradeType === "dividend")
-
-      const totalBuyQty = buys.reduce((s, t) => s + t.quantity, 0)
-      const totalSellQty = sells.reduce((s, t) => s + t.quantity, 0)
-      const totalBuyAmount = buys.reduce((s, t) => s + t.totalAmount, 0)
-      const totalSellNet = sells.reduce((s, t) => s + t.netAmount, 0)
-      const totalDividend = dividends.reduce((s, t) => s + t.netAmount, 0)
-
-      const holdingQty = totalBuyQty - totalSellQty
-      const avgBuyPrice = totalBuyQty > 0 ? Math.round(totalBuyAmount / totalBuyQty) : 0
-      const realizedGain = totalSellNet - (totalSellQty * avgBuyPrice)
-
-      return {
-        ticker,
-        holdingQty,
-        avgBuyPrice,
-        totalBuyAmount,
-        totalSellNet,
-        totalDividend,
-        realizedGain,
-        trades: items,
-      }
-    })
-  }, [trades])
+    return tickerSummaries.map((s) => ({
+      ticker: s.ticker,
+      holdingQty: s.holdingQty,
+      avgBuyPrice: s.avgBuyPrice,
+      totalBuyAmount: s.totalBuyAmount,
+      totalSellNet: s.totalSellNet,
+      totalDividend: s.totalDividend,
+      realizedGain: s.realizedGain,
+      trades: tradesByTicker.get(s.ticker) ?? [],
+    }))
+  }, [tickerSummaries, trades])
 
   const [tickerTab, setTickerTab] = useState("holding")
 

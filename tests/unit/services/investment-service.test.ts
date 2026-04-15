@@ -10,6 +10,7 @@ vi.mock('@/db/repositories', () => ({
   updateInvestmentTrade: vi.fn(),
   getAssetTradeSummary: vi.fn(),
   getMonthlyTradeSummary: vi.fn(),
+  getTickerSummaries: vi.fn(),
   updateAccountBalance: vi.fn(),
   syncAssetFromAccount: vi.fn(),
 }))
@@ -34,6 +35,7 @@ import {
   getInvestmentTradesService,
   getAssetInvestmentSummaryService,
   getAnnualTradeReportService,
+  getTickerSummariesService,
 } from '@/lib/services/investment-service'
 import * as repos from '@/db/repositories'
 
@@ -280,5 +282,31 @@ describe('getAnnualTradeReportService', () => {
       expect(result.data.totalBought).toBe(0)
       expect(result.data.months.every(m => m.totalBought === 0)).toBe(true)
     }
+  })
+})
+
+describe('getTickerSummariesService', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('ticker별 요약을 반환한다', async () => {
+    mockRepos.findAssetById.mockResolvedValue(mockAsset as any)
+    mockRepos.getTickerSummaries.mockResolvedValue([
+      { ticker: '삼성전자', holdingQty: 0, avgBuyPrice: 189050, totalBuyAmount: 5860550, totalSellNet: 6104920, totalDividend: 0, realizedGain: 244370 },
+      { ticker: '스피어', holdingQty: 87, avgBuyPrice: 51540, totalBuyAmount: 4483950, totalSellNet: 0, totalDividend: 0, realizedGain: 0 },
+    ])
+
+    const result = await getTickerSummariesService('asset_1', '2026-04-01', '2026-05-01')
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data).toHaveLength(2)
+      expect(result.data[0].ticker).toBe('삼성전자')
+      expect(result.data[0].realizedGain).toBe(244370)
+    }
+  })
+
+  it('자산이 없으면 에러를 반환한다', async () => {
+    mockRepos.findAssetById.mockResolvedValue(null)
+    const result = await getTickerSummariesService('none')
+    expect(result.success).toBe(false)
   })
 })

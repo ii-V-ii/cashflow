@@ -85,6 +85,83 @@ export async function deleteInvestmentTrade(id: string) {
   return existing
 }
 
+export async function getTickerSummaries(assetId: string, from?: string, to?: string) {
+  const db = getDb()
+  const hasPeriod = !!(from && to)
+
+  // 1) 누적 매수 (ticker별 평균매수단가) - to 이전까지
+  const buyConditions = [`asset_id = '${assetId}'`, `trade_type = 'buy'`]
+  if (hasPeriod) buyConditions.push(`date < '${to}'`)
+
+  // 2) 누적 매도 수량 (보유수량 계산)
+  const sellConditions = [`asset_id = '${assetId}'`, `trade_type = 'sell'`]
+  if (hasPeriod) sellConditions.push(`date < '${to}'`)
+
+  // 3) 매도/배당 (기간별)
+  const sdConditions = [`asset_id = '${assetId}'`, `trade_type IN ('sell', 'dividend')`]
+  if (hasPeriod) {
+    sdConditions.push(`date >= '${from}'`)
+    sdConditions.push(`date < '${to}'`)
+  }
+
+  const rows = await db.execute(sql`
+    WITH cum_buy AS (
+      SELECT ticker,
+        COALESCE(SUM(quantity), 0) AS buy_qty,
+        COALESCE(SUM(total_amount), 0) AS buy_total
+      FROM ${investmentTrades}
+      WHERE ${sql.raw(buyConditions.join(' AND '))}
+      GROUP BY ticker
+    ),
+    cum_sell AS (
+      SELECT ticker,
+        COALESCE(SUM(quantity), 0) AS sell_qty
+      FROM ${investmentTrades}
+      WHERE ${sql.raw(sellConditions.join(' AND '))}
+      GROUP BY ticker
+    ),
+    period_sd AS (
+      SELECT ticker, trade_type,
+        COALESCE(SUM(quantity), 0) AS qty,
+        COALESCE(SUM(net_amount), 0) AS net
+      FROM ${investmentTrades}
+      WHERE ${sql.raw(sdConditions.join(' AND '))}
+      GROUP BY ticker, trade_type
+    )
+    SELECT
+      b.ticker,
+      (b.buy_qty - COALESCE(s.sell_qty, 0))::numeric AS holding_qty,
+      CASE WHEN b.buy_qty > 0 THEN ROUND(b.buy_total::numeric / b.buy_qty) ELSE 0 END AS avg_buy_price,
+      b.buy_total::integer AS total_buy_amount,
+      COALESCE(ps.net, 0)::integer AS total_sell_net,
+      COALESCE(pd.net, 0)::integer AS total_dividend,
+      (COALESCE(ps.net, 0) - CASE WHEN b.buy_qty > 0 THEN ROUND(b.buy_total::numeric / b.buy_qty * COALESCE(ps.qty, 0)) ELSE 0 END)::integer AS realized_gain
+    FROM cum_buy b
+    LEFT JOIN cum_sell s ON s.ticker = b.ticker
+    LEFT JOIN period_sd ps ON ps.ticker = b.ticker AND ps.trade_type = 'sell'
+    LEFT JOIN period_sd pd ON pd.ticker = b.ticker AND pd.trade_type = 'dividend'
+    ORDER BY b.ticker
+  `) as unknown as Array<{
+    ticker: string
+    holding_qty: number
+    avg_buy_price: number
+    total_buy_amount: number
+    total_sell_net: number
+    total_dividend: number
+    realized_gain: number
+  }>
+
+  return rows.map(r => ({
+    ticker: r.ticker ?? '(종목명 없음)',
+    holdingQty: Number(r.holding_qty),
+    avgBuyPrice: Number(r.avg_buy_price),
+    totalBuyAmount: Number(r.total_buy_amount),
+    totalSellNet: Number(r.total_sell_net),
+    totalDividend: Number(r.total_dividend),
+    realizedGain: Number(r.realized_gain),
+  }))
+}
+
 export async function getMonthlyTradeSummary(year: number) {
   const db = getDb()
   const from = `${year}-01-01`
