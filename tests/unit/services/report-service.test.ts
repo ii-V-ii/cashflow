@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 const mockResolve = vi.fn()
 const mockExecute = vi.fn()
@@ -174,20 +174,15 @@ describe('getNetWorthTrend', () => {
   })
 
   it('최근 N개월 순자산 추이를 반환한다', async () => {
-    // H-3: 단일 쿼리 + 누적합 방식
-    // 계좌 목록 (initialBalance 기반)
-    mockResolve.mockResolvedValueOnce([
-      { id: 'acc_1', name: '신한', currentBalance: 10000000, initialBalance: 13000000 },
-      { id: 'acc_2', name: '국민', currentBalance: 5000000, initialBalance: 500000 },
-    ])
-    // totalInitialBalance = 13500000
-
-    // 단일 쿼리: 월별 순효과 (db.execute)
-    // monthList = ['2026-02', '2026-03', '2026-04']
+    // H-3: Promise.all로 3개 쿼리 병렬 실행
+    // 1. db.select().from(accounts) → initialBalance SUM
+    mockResolve.mockResolvedValueOnce([{ total: 13500000 }])
+    // 2. db.execute → 시작일 이전 누적효과
+    mockExecute.mockResolvedValueOnce([{ prior_effect: 0 }])
+    // 3. db.execute → 월별 순효과
     mockExecute.mockResolvedValueOnce([
       { year_month: '2026-03', net_effect: 700000 },
       { year_month: '2026-04', net_effect: 800000 },
-      // 2026-02에는 거래 없음 → 잔액 유지
     ])
 
     const result = await getNetWorthTrend(3)
@@ -195,7 +190,7 @@ describe('getNetWorthTrend', () => {
     expect(result.success).toBe(true)
     if (result.success) {
       expect(result.data).toHaveLength(3)
-      // 2026-02: initialBalance(13500000) + 0 = 13500000
+      // 2026-02: 13500000 + 0(prior) + 0(no data) = 13500000
       expect(result.data[0].totalBalance).toBe(13500000)
       // 2026-03: 13500000 + 700000 = 14200000
       expect(result.data[1].totalBalance).toBe(14200000)

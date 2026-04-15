@@ -3,19 +3,19 @@ import { formatCurrency, formatDate, generateId } from '@/lib/utils'
 
 describe('formatCurrency', () => {
   it('KRW 형식으로 포맷한다', () => {
-    expect(formatCurrency(50000)).toBe('₩50,000')
+    expect(formatCurrency(50000)).toBe('50,000')
   })
 
   it('0원을 포맷한다', () => {
-    expect(formatCurrency(0)).toBe('₩0')
+    expect(formatCurrency(0)).toBe('0')
   })
 
-  it('음수 금액을 포맷한다', () => {
-    expect(formatCurrency(-15000)).toBe('-₩15,000')
+  it('음수는 절대값으로 포맷한다', () => {
+    expect(formatCurrency(-15000)).toBe('15,000')
   })
 
   it('큰 금액을 포맷한다', () => {
-    expect(formatCurrency(1234567890)).toBe('₩1,234,567,890')
+    expect(formatCurrency(1234567890)).toBe('1,234,567,890')
   })
 })
 

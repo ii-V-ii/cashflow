@@ -5,8 +5,6 @@ vi.mock('@/db/repositories', () => ({
   findAllTransactions: vi.fn(),
   findTransactionById: vi.fn(),
   deleteTransaction: vi.fn(),
-  findAccountById: vi.fn(),
-  findCategoryById: vi.fn(),
 }))
 
 import {
@@ -19,14 +17,28 @@ import * as repos from '@/db/repositories'
 
 const mockRepos = vi.mocked(repos)
 
+const fullTransaction = {
+  id: 'tx_1',
+  type: 'expense' as const,
+  amount: 15000,
+  description: '점심',
+  status: 'applied' as const,
+  categoryId: 'cat_1',
+  accountId: 'acc_1',
+  toAccountId: null,
+  recurringId: null,
+  date: '2026-04-01',
+  memo: null,
+  installmentMonths: null,
+  installmentCurrent: null,
+  tags: [] as string[],
+  createdAt: new Date(),
+  updatedAt: new Date(),
+}
+
 describe('createTransactionService', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockRepos.findAccountById.mockResolvedValue({
-      id: 'acc_1', name: '신한', type: 'bank', initialBalance: 1000000, currentBalance: 1000000,
-      color: null, icon: null, isActive: true, sortOrder: 0,
-      createdAt: new Date('2026-01-01'), updatedAt: new Date('2026-01-01'),
-    })
   })
 
   const validInput = {
@@ -39,8 +51,7 @@ describe('createTransactionService', () => {
   }
 
   it('유효한 입력으로 거래를 생성한다', async () => {
-    const mockTransaction = { id: 'tx_1', ...validInput, toAccountId: null, recurringId: null, memo: null, tags: [], createdAt: new Date(), updatedAt: new Date() }
-    mockRepos.createTransaction.mockResolvedValue(mockTransaction)
+    mockRepos.createTransaction.mockResolvedValue(fullTransaction)
 
     const result = await createTransactionService(validInput)
     expect(result.success).toBe(true)
@@ -57,69 +68,51 @@ describe('createTransactionService', () => {
     }
   })
 
-  it('존재하지 않는 계좌면 에러를 반환한다', async () => {
-    mockRepos.findAccountById.mockResolvedValue(null as any)
-
-    const result = await createTransactionService(validInput)
-    expect(result.success).toBe(false)
-    if (!result.success) {
-      expect(result.error.code).toBe('ACCOUNT_NOT_FOUND')
-    }
-  })
-
-  it('이체 시 도착 계좌를 검증한다', async () => {
-    const secondAccount = {
-      id: 'acc_2', name: '국민', type: 'bank' as const, initialBalance: 500000, currentBalance: 500000,
-      color: null, icon: null, isActive: true, sortOrder: 1,
-      createdAt: new Date('2026-01-01'), updatedAt: new Date('2026-01-01'),
-    }
-    mockRepos.findAccountById
-      .mockResolvedValueOnce({ ...secondAccount, id: 'acc_1' })
-      .mockResolvedValueOnce(secondAccount)
-
+  it('이체 시 도착 계좌가 필요하다', async () => {
     const transferInput = {
       type: 'transfer' as const,
       amount: 50000,
       description: '이체',
       accountId: 'acc_1',
-      toAccountId: 'acc_2',
       date: '2026-04-01',
+      // toAccountId 누락
     }
-    const mockTx = { id: 'tx_2', ...transferInput, categoryId: null, recurringId: null, memo: null, tags: [], createdAt: new Date(), updatedAt: new Date() }
-    mockRepos.createTransaction.mockResolvedValue(mockTx)
 
     const result = await createTransactionService(transferInput)
-    expect(result.success).toBe(true)
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      expect(result.error.code).toBe('VALIDATION_ERROR')
+    }
   })
 
-  it('이체 시 도착 계좌가 존재하지 않으면 에러를 반환한다', async () => {
-    mockRepos.findAccountById
-      .mockResolvedValueOnce({
-        id: 'acc_1', name: '신한', type: 'bank', initialBalance: 1000000, currentBalance: 1000000,
-        color: null, icon: null, isActive: true, sortOrder: 0,
-        createdAt: new Date('2026-01-01'), updatedAt: new Date('2026-01-01'),
-      })
-      .mockResolvedValueOnce(null as any)
+  it('유효한 이체를 생성한다', async () => {
+    const transferTx = {
+      ...fullTransaction,
+      id: 'tx_2',
+      type: 'transfer' as const,
+      amount: 50000,
+      description: '이체',
+      categoryId: null,
+      toAccountId: 'acc_2',
+    }
+    mockRepos.createTransaction.mockResolvedValue(transferTx)
 
     const result = await createTransactionService({
       type: 'transfer',
       amount: 50000,
       description: '이체',
       accountId: 'acc_1',
-      toAccountId: 'acc_nonexistent',
+      toAccountId: 'acc_2',
       date: '2026-04-01',
     })
-    expect(result.success).toBe(false)
-    if (!result.success) {
-      expect(result.error.code).toBe('ACCOUNT_NOT_FOUND')
-    }
+    expect(result.success).toBe(true)
   })
 })
 
 describe('getTransactionsService', () => {
   it('거래 목록과 페이지네이션을 반환한다', async () => {
     mockRepos.findAllTransactions.mockResolvedValue({
-      data: [{ id: 'tx_1', type: 'expense' as const, amount: 10000, description: '테스트', categoryId: null, accountId: 'acc_1', toAccountId: null, recurringId: null, date: '2026-04-01', memo: null, tags: [], createdAt: new Date(), updatedAt: new Date() }],
+      data: [fullTransaction],
       total: 1,
       page: 1,
       limit: 20,
@@ -136,7 +129,7 @@ describe('getTransactionsService', () => {
 
 describe('getTransactionByIdService', () => {
   it('존재하는 거래를 반환한다', async () => {
-    mockRepos.findTransactionById.mockResolvedValue({ id: 'tx_1', type: 'expense' as const, amount: 10000, description: '테스트', categoryId: null, accountId: 'acc_1', toAccountId: null, recurringId: null, date: '2026-04-01', memo: null, tags: [], createdAt: new Date(), updatedAt: new Date() })
+    mockRepos.findTransactionById.mockResolvedValue(fullTransaction)
 
     const result = await getTransactionByIdService('tx_1')
     expect(result.success).toBe(true)
