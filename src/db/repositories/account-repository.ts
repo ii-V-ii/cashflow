@@ -1,4 +1,4 @@
-import { eq, sql } from 'drizzle-orm'
+import { eq, sql, and, max } from 'drizzle-orm'
 import { getDb } from '../index'
 import { accounts, assets } from '../schema'
 import { generateId } from '../../lib/utils'
@@ -23,9 +23,17 @@ export async function createAccount(input: CreateAccountInput) {
   const db = getDb()
   const id = generateId()
 
+  // 같은 타입 내 마지막 sortOrder + 1
+  const [maxRow] = await db
+    .select({ maxSort: max(accounts.sortOrder) })
+    .from(accounts)
+    .where(eq(accounts.type, input.type))
+  const nextSort = (maxRow?.maxSort ?? -1) + 1
+
   const [result] = await db.insert(accounts)
     .values({
       id,
+      sortOrder: nextSort,
       name: input.name,
       type: input.type,
       initialBalance: input.balance ?? 0,
