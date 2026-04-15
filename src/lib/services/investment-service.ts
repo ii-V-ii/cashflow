@@ -16,6 +16,7 @@ import {
   getAssetTradeSummary,
   updateAccountBalance,
   findAccountById,
+  syncAssetFromAccount,
 } from '@/db/repositories'
 import {
   createInvestmentReturnSchema,
@@ -185,8 +186,10 @@ export async function getInvestmentSummaryService(
 
 export async function getInvestmentTradesService(
   assetId?: string,
+  from?: string,
+  to?: string,
 ): Promise<ApiResponse<Awaited<ReturnType<typeof findAllInvestmentTrades>>>> {
-  return successResponse(await findAllInvestmentTrades(assetId))
+  return successResponse(await findAllInvestmentTrades(assetId, from, to))
 }
 
 export async function getInvestmentTradeByIdService(
@@ -225,6 +228,8 @@ export async function createTradeService(
       // sell, dividend: +netAmount
       await updateAccountBalance(parsed.data.accountId, parsed.data.netAmount)
     }
+
+    await syncAssetFromAccount(parsed.data.accountId)
   }
 
   const trade = await createInvestmentTradeRepo(parsed.data)
@@ -263,6 +268,8 @@ export async function deleteTradeService(
       // sell, dividend: 원래 +했던 금액을 -
       await updateAccountBalance(trade.accountId, -trade.netAmount)
     }
+
+    await syncAssetFromAccount(trade.accountId)
   }
 
   return successResponse({ deleted: true })
@@ -270,12 +277,14 @@ export async function deleteTradeService(
 
 export async function getAssetInvestmentSummaryService(
   assetId: string,
+  from?: string,
+  to?: string,
 ): Promise<ApiResponse<AssetInvestmentSummary>> {
   const asset = await findAssetById(assetId)
   if (!asset) {
     return errorResponse('ASSET_NOT_FOUND', '자산을 찾을 수 없습니다')
   }
 
-  const summary = await getAssetTradeSummary(assetId)
+  const summary = await getAssetTradeSummary(assetId, from, to)
   return successResponse(summary)
 }

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useMemo, useCallback } from "react"
-import { Plus, Pencil, Trash2, TrendingUp, TrendingDown } from "lucide-react"
+import { Plus, Pencil, Trash2, TrendingUp, TrendingDown, ChevronRight, ChevronLeft } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -31,6 +31,7 @@ import {
   useDeleteTrade,
 } from "@/hooks/use-investment-trades"
 import { useAssets } from "@/hooks/use-assets"
+import { useAccounts } from "@/hooks/use-accounts"
 import { TradeFormDialog } from "@/components/investments/TradeFormDialog"
 import { DeleteConfirmDialog } from "@/components/shared/DeleteConfirmDialog"
 import type { InvestmentTrade, TradeType } from "@/types"
@@ -56,9 +57,42 @@ export default function InvestmentsPage() {
   const [editingTrade, setEditingTrade] = useState<InvestmentTrade | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<InvestmentTrade | null>(null)
 
+  // 매매 기록 월 네비게이터
+  const now = new Date()
+  const [tradeYear, setTradeYear] = useState(now.getFullYear())
+  const [tradeMonth, setTradeMonth] = useState(now.getMonth() + 1)
+
+  const tradeFrom = `${tradeYear}-${String(tradeMonth).padStart(2, "0")}-01`
+  const tradeToDate = tradeMonth === 12
+    ? `${tradeYear + 1}-01-01`
+    : `${tradeYear}-${String(tradeMonth + 1).padStart(2, "0")}-01`
+
+  const handleTradePrevMonth = useCallback(() => {
+    setTradeMonth((m) => {
+      if (m === 1) {
+        setTradeYear((y) => y - 1)
+        return 12
+      }
+      return m - 1
+    })
+  }, [])
+
+  const handleTradeNextMonth = useCallback(() => {
+    setTradeMonth((m) => {
+      if (m === 12) {
+        setTradeYear((y) => y + 1)
+        return 1
+      }
+      return m + 1
+    })
+  }, [])
+
   const { data: assets } = useAssets()
+  const { data: accounts } = useAccounts()
   const { data: trades, isLoading: tradesLoading } = useInvestmentTrades(
     filterAssetId || undefined,
+    tradeFrom,
+    tradeToDate,
   )
 
   const createMutation = useCreateTrade()
@@ -78,12 +112,8 @@ export default function InvestmentsPage() {
     return map
   }, [assets])
 
-  const sortedTrades = useMemo(() => {
-    if (!trades) return []
-    return [...trades].sort(
-      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
-    )
-  }, [trades])
+  // DB에서 이미 날짜 역순 정렬됨
+  const sortedTrades = trades ?? []
 
   const handleOpenCreate = useCallback(() => {
     setEditingTrade(null)
@@ -126,6 +156,18 @@ export default function InvestmentsPage() {
 
         {/* 매매 기록 탭 */}
         <TabsContent value="trades" className="space-y-4 pt-2">
+          <div className="flex items-center justify-center gap-2">
+            <Button variant="outline" size="icon-sm" onClick={handleTradePrevMonth} aria-label="이전 달">
+              <ChevronLeft className="size-4" />
+            </Button>
+            <span className="min-w-24 text-center text-sm font-semibold">
+              {tradeYear}년 {tradeMonth}월
+            </span>
+            <Button variant="outline" size="icon-sm" onClick={handleTradeNextMonth} aria-label="다음 달">
+              <ChevronRight className="size-4" />
+            </Button>
+          </div>
+
           <div className="flex flex-wrap items-center justify-between gap-3">
             <Select
               value={filterAssetId}
@@ -250,8 +292,9 @@ export default function InvestmentsPage() {
 
         {/* 수익 요약 탭 */}
         <TabsContent value="summary" className="space-y-4 pt-2">
-          <SummaryTab assets={activeAssets} assetMap={assetMap} />
+          <SummaryTab assets={activeAssets} assetMap={assetMap} accounts={accounts} />
         </TabsContent>
+
       </Tabs>
 
       {/* 매매 등록/수정 다이얼로그 */}
@@ -283,41 +326,123 @@ export default function InvestmentsPage() {
 interface SummaryTabProps {
   assets: Array<{ id: string; name: string }>
   assetMap: Map<string, string>
+  accounts: Array<{ id: string; assetId: string | null; type: string }> | undefined
 }
 
-function SummaryTab({ assets }: SummaryTabProps) {
-  if (assets.length === 0) {
+function SummaryTab({ assets, accounts }: SummaryTabProps) {
+  // 투자 계좌에 연결된 자산만 표시
+  const investmentAssetIds = useMemo(() => {
+    if (!accounts) return new Set<string>()
+    return new Set(
+      accounts
+        .filter((a) => a.type === "investment" && a.assetId)
+        .map((a) => a.assetId!),
+    )
+  }, [accounts])
+
+  const investmentAssets = assets.filter((a) => investmentAssetIds.has(a.id))
+
+  const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null)
+
+  // 월 네비게이터: "전체" 또는 특정 월
+  const now = new Date()
+  const [summaryMode, setSummaryMode] = useState<"all" | "month">("all")
+  const [summaryYear, setSummaryYear] = useState(now.getFullYear())
+  const [summaryMonth, setSummaryMonth] = useState(now.getMonth() + 1)
+
+  const summaryFrom = summaryMode === "month"
+    ? `${summaryYear}-${String(summaryMonth).padStart(2, "0")}-01`
+    : undefined
+  const summaryTo = summaryMode === "month"
+    ? (summaryMonth === 12
+      ? `${summaryYear + 1}-01-01`
+      : `${summaryYear}-${String(summaryMonth + 1).padStart(2, "0")}-01`)
+    : undefined
+
+  const handleSummaryPrevMonth = useCallback(() => {
+    setSummaryMode("month")
+    setSummaryMonth((m) => {
+      if (m === 1) {
+        setSummaryYear((y) => y - 1)
+        return 12
+      }
+      return m - 1
+    })
+  }, [])
+
+  const handleSummaryNextMonth = useCallback(() => {
+    setSummaryMode("month")
+    setSummaryMonth((m) => {
+      if (m === 12) {
+        setSummaryYear((y) => y + 1)
+        return 1
+      }
+      return m + 1
+    })
+  }, [])
+
+  if (investmentAssets.length === 0) {
     return (
       <p className="py-10 text-center text-sm text-muted-foreground">
-        등록된 자산이 없습니다. 먼저 자산을 추가해주세요.
+        투자 계좌에 연결된 자산이 없습니다.
       </p>
     )
   }
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2">
-      {assets.map((asset) => (
-        <AssetSummaryCard key={asset.id} assetId={asset.id} />
-      ))}
+    <div className="space-y-4">
+      <div className="flex items-center justify-center gap-2">
+        <Button
+          variant={summaryMode === "all" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setSummaryMode("all")}
+        >
+          전체
+        </Button>
+        <Button variant="outline" size="icon-sm" onClick={handleSummaryPrevMonth} aria-label="이전 달">
+          <ChevronLeft className="size-4" />
+        </Button>
+        <span className="min-w-24 text-center text-sm font-semibold">
+          {summaryMode === "all" ? "전체 기간" : `${summaryYear}년 ${summaryMonth}월`}
+        </span>
+        <Button variant="outline" size="icon-sm" onClick={handleSummaryNextMonth} aria-label="다음 달">
+          <ChevronRight className="size-4" />
+        </Button>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        {investmentAssets.map((asset) => (
+          <AssetSummaryCard
+            key={asset.id}
+            assetId={asset.id}
+            from={summaryFrom}
+            to={summaryTo}
+            isSelected={selectedAssetId === asset.id}
+            onSelect={() => setSelectedAssetId(selectedAssetId === asset.id ? null : asset.id)}
+          />
+        ))}
+      </div>
+
+      {selectedAssetId && (
+        <TickerDetail assetId={selectedAssetId} assetName={investmentAssets.find(a => a.id === selectedAssetId)?.name ?? ""} />
+      )}
     </div>
   )
 }
 
-function AssetSummaryCard({ assetId }: { assetId: string }) {
-  const { data: summary, isLoading } = useInvestmentTradeSummary(assetId)
+function AssetSummaryCard({ assetId, from, to, isSelected, onSelect }: { assetId: string; from?: string; to?: string; isSelected: boolean; onSelect: () => void }) {
+  const { data: summary, isLoading } = useInvestmentTradeSummary(assetId, from, to)
 
-  if (isLoading) {
-    return <Skeleton className="h-48" />
-  }
-
-  if (!summary) {
-    return null
-  }
+  if (isLoading) return <Skeleton className="h-48" />
+  if (!summary) return null
 
   const isPositiveReturn = summary.totalReturn >= 0
 
   return (
-    <Card>
+    <Card
+      className={`cursor-pointer transition-colors ${isSelected ? "ring-2 ring-primary" : "hover:bg-muted/50"}`}
+      onClick={onSelect}
+    >
       <CardHeader className="pb-2">
         <CardTitle className="flex items-center gap-2 text-base">
           {summary.assetName}
@@ -331,43 +456,211 @@ function AssetSummaryCard({ assetId }: { assetId: string }) {
       <CardContent>
         <div className="grid grid-cols-2 gap-y-2 text-sm">
           <SummaryRow label="보유수량" value={formatQuantity(summary.totalQuantity)} />
-          <SummaryRow
-            label="평균매수단가"
-            value={`${formatCurrency(summary.avgBuyPrice)}원`}
-          />
-          <SummaryRow
-            label="총 매수액"
-            value={`${formatCurrency(summary.totalBought)}원`}
-          />
-          <SummaryRow
-            label="총 매도액"
-            value={`${formatCurrency(summary.totalSold)}원`}
-          />
-          <SummaryRow
-            label="배당수익"
-            value={`${formatCurrency(summary.totalDividend)}원`}
-            className="text-emerald-600"
-          />
-          <SummaryRow
-            label="실현손익"
-            value={`${formatCurrency(summary.realizedGain)}원`}
-            className={
-              summary.realizedGain >= 0 ? "text-emerald-600" : "text-rose-600"
-            }
-          />
-          <SummaryRow
-            label="미실현손익"
-            value={`${formatCurrency(summary.unrealizedGain)}원`}
-            className={
-              summary.unrealizedGain >= 0 ? "text-emerald-600" : "text-rose-600"
-            }
-          />
+          <SummaryRow label="평균매수단가" value={`${formatCurrency(summary.avgBuyPrice)}원`} />
+          <SummaryRow label="총 매수액" value={`${formatCurrency(summary.totalBought)}원`} />
+          <SummaryRow label="총 매도액" value={`${formatCurrency(summary.totalSold)}원`} />
+          <SummaryRow label="배당수익" value={`${formatCurrency(summary.totalDividend)}원`} className="text-emerald-600" />
+          <SummaryRow label="실현손익" value={`${formatCurrency(summary.realizedGain)}원`} className={summary.realizedGain >= 0 ? "text-emerald-600" : "text-rose-600"} />
+          <SummaryRow label="미실현손익" value={`${formatCurrency(summary.unrealizedGain)}원`} className={summary.unrealizedGain >= 0 ? "text-emerald-600" : "text-rose-600"} />
           <SummaryRow
             label="수익률"
             value={`${isPositiveReturn ? "+" : "-"}${Math.abs(summary.totalReturn).toFixed(2)}%`}
             className={`font-semibold ${isPositiveReturn ? "text-emerald-600" : "text-rose-600"}`}
           />
         </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// 종목별 상세
+function TickerDetail({ assetId, assetName }: { assetId: string; assetName: string }) {
+  const { data: trades } = useInvestmentTrades(assetId)
+  const [expandedTickers, setExpandedTickers] = useState<Set<string>>(new Set())
+
+  const toggleTicker = useCallback((ticker: string) => {
+    setExpandedTickers((prev) => {
+      const next = new Set(prev)
+      if (next.has(ticker)) next.delete(ticker)
+      else next.add(ticker)
+      return next
+    })
+  }, [])
+
+  const tickerGroups = useMemo(() => {
+    if (!trades) return []
+    const map = new Map<string, typeof trades>()
+    for (const t of trades) {
+      const key = t.ticker || "(종목명 없음)"
+      const list = map.get(key) ?? []
+      list.push(t)
+      map.set(key, list)
+    }
+
+    return Array.from(map.entries()).map(([ticker, items]) => {
+      const buys = items.filter((t) => t.tradeType === "buy")
+      const sells = items.filter((t) => t.tradeType === "sell")
+      const dividends = items.filter((t) => t.tradeType === "dividend")
+
+      const totalBuyQty = buys.reduce((s, t) => s + t.quantity, 0)
+      const totalSellQty = sells.reduce((s, t) => s + t.quantity, 0)
+      const totalBuyAmount = buys.reduce((s, t) => s + t.totalAmount, 0)
+      const totalSellNet = sells.reduce((s, t) => s + t.netAmount, 0)
+      const totalDividend = dividends.reduce((s, t) => s + t.netAmount, 0)
+
+      const holdingQty = totalBuyQty - totalSellQty
+      const avgBuyPrice = totalBuyQty > 0 ? Math.round(totalBuyAmount / totalBuyQty) : 0
+      const realizedGain = totalSellNet - (totalSellQty * avgBuyPrice)
+
+      return {
+        ticker,
+        holdingQty,
+        avgBuyPrice,
+        totalBuyAmount,
+        totalSellNet,
+        totalDividend,
+        realizedGain,
+        trades: items,
+      }
+    })
+  }, [trades])
+
+  const [tickerTab, setTickerTab] = useState("holding")
+
+  const holdingGroups = tickerGroups.filter((g) => g.holdingQty > 0)
+  const soldGroups = tickerGroups.filter((g) => g.holdingQty <= 0)
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">{assetName} - 종목별 상세</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <Tabs value={tickerTab} onValueChange={setTickerTab}>
+          <TabsList variant="line" className="w-full sm:w-auto">
+            <TabsTrigger value="holding">보유 종목 ({holdingGroups.length})</TabsTrigger>
+            <TabsTrigger value="sold">매도 완료 ({soldGroups.length})</TabsTrigger>
+          </TabsList>
+          <TabsContent value="holding" className="mt-3 space-y-4">
+            {holdingGroups.length === 0 ? (
+              <p className="py-4 text-center text-sm text-muted-foreground">보유 중인 종목이 없습니다.</p>
+            ) : holdingGroups.map((group) => {
+          const isExpanded = expandedTickers.has(group.ticker)
+          return (
+          <div key={group.ticker} className="space-y-2">
+            <button
+              type="button"
+              onClick={() => toggleTicker(group.ticker)}
+              className="flex w-full items-center justify-between rounded-lg px-2 py-1.5 hover:bg-muted transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <ChevronRight className={`size-4 text-muted-foreground transition-transform ${isExpanded ? "rotate-90" : ""}`} />
+                <span className="font-semibold">{group.ticker}</span>
+              </div>
+              <span className={`text-sm font-mono ${group.realizedGain >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                실현손익 {formatCurrency(group.realizedGain)}원
+              </span>
+            </button>
+            <div className="grid grid-cols-4 gap-2 text-xs text-muted-foreground pl-8">
+              <span>보유 {formatQuantity(group.holdingQty)}주</span>
+              <span>평단 {formatCurrency(group.avgBuyPrice)}원</span>
+              <span>매수총액 {formatCurrency(group.totalBuyAmount)}원</span>
+              <span>배당 {formatCurrency(group.totalDividend)}원</span>
+            </div>
+            {isExpanded && (
+            <div className="overflow-x-auto pl-6">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="text-xs">날짜</TableHead>
+                    <TableHead className="text-xs">유형</TableHead>
+                    <TableHead className="text-xs text-right">수량</TableHead>
+                    <TableHead className="text-xs text-right">단가</TableHead>
+                    <TableHead className="text-xs text-right">총액</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {group.trades.map((t) => (
+                    <TableRow key={t.id}>
+                      <TableCell className="text-xs">{formatDate(t.date)}</TableCell>
+                      <TableCell>
+                        <Badge className={`text-[10px] ${TRADE_TYPE_BADGE_VARIANT[t.tradeType]}`}>
+                          {TRADE_TYPE_LABELS[t.tradeType]}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-xs text-right font-mono">{formatQuantity(t.quantity)}</TableCell>
+                      <TableCell className="text-xs text-right font-mono">{formatCurrency(t.unitPrice)}</TableCell>
+                      <TableCell className="text-xs text-right font-mono">{formatCurrency(t.totalAmount)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+            )}
+          </div>
+          )
+        })}
+          </TabsContent>
+          <TabsContent value="sold" className="mt-3 space-y-4">
+            {soldGroups.length === 0 ? (
+              <p className="py-4 text-center text-sm text-muted-foreground">매도 완료된 종목이 없습니다.</p>
+            ) : soldGroups.map((group) => {
+              const isExpanded = expandedTickers.has(group.ticker)
+              return (
+              <div key={group.ticker} className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => toggleTicker(group.ticker)}
+                  className="flex w-full items-center justify-between rounded-lg px-2 py-1.5 hover:bg-muted transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    <ChevronRight className={`size-4 text-muted-foreground transition-transform ${isExpanded ? "rotate-90" : ""}`} />
+                    <span className="font-semibold">{group.ticker}</span>
+                  </div>
+                  <span className={`text-sm font-mono ${group.realizedGain >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                    실현손익 {formatCurrency(group.realizedGain)}원
+                  </span>
+                </button>
+                <div className="grid grid-cols-4 gap-2 text-xs text-muted-foreground pl-8">
+                  <span>매수총액 {formatCurrency(group.totalBuyAmount)}원</span>
+                  <span>매도총액 {formatCurrency(group.totalSellNet)}원</span>
+                  <span>배당 {formatCurrency(group.totalDividend)}원</span>
+                </div>
+                {isExpanded && (
+                <div className="overflow-x-auto pl-6">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-xs">날짜</TableHead>
+                        <TableHead className="text-xs">유형</TableHead>
+                        <TableHead className="text-xs text-right">수량</TableHead>
+                        <TableHead className="text-xs text-right">단가</TableHead>
+                        <TableHead className="text-xs text-right">총액</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {group.trades.map((t) => (
+                        <TableRow key={t.id}>
+                          <TableCell className="text-xs">{formatDate(t.date)}</TableCell>
+                          <TableCell>
+                            <Badge className={`text-[10px] ${TRADE_TYPE_BADGE_VARIANT[t.tradeType]}`}>
+                              {TRADE_TYPE_LABELS[t.tradeType]}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-xs text-right font-mono">{formatQuantity(t.quantity)}</TableCell>
+                          <TableCell className="text-xs text-right font-mono">{formatCurrency(t.unitPrice)}</TableCell>
+                          <TableCell className="text-xs text-right font-mono">{formatCurrency(t.totalAmount)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+                )}
+              </div>
+              )
+            })}
+          </TabsContent>
+        </Tabs>
       </CardContent>
     </Card>
   )

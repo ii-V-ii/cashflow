@@ -1,22 +1,25 @@
-import { eq, sql, desc } from 'drizzle-orm'
+import { eq, and, sql, desc, gte, lt } from 'drizzle-orm'
 import { getDb } from '../index'
 import { investmentTrades, assets } from '../schema'
 import { generateId } from '../../lib/utils'
 import type { CreateInvestmentTradeInput, UpdateInvestmentTradeInput } from '../../lib/validators'
 
-export async function findAllInvestmentTrades(assetId?: string) {
+export async function findAllInvestmentTrades(assetId?: string, from?: string, to?: string) {
   const db = getDb()
-  if (assetId) {
-    return db
-      .select()
-      .from(investmentTrades)
-      .where(eq(investmentTrades.assetId, assetId))
-      .orderBy(desc(investmentTrades.date))
-  }
+  const conditions = []
+  if (assetId) conditions.push(eq(investmentTrades.assetId, assetId))
+  if (from) conditions.push(gte(investmentTrades.date, from))
+  if (to) conditions.push(lt(investmentTrades.date, to))
+
+  const where = conditions.length > 0
+    ? conditions.length === 1 ? conditions[0] : and(...conditions)
+    : undefined
+
   return db
     .select()
     .from(investmentTrades)
-    .orderBy(desc(investmentTrades.date))
+    .where(where)
+    .orderBy(desc(investmentTrades.date), desc(investmentTrades.createdAt))
 }
 
 export async function findInvestmentTradeById(id: string) {
@@ -82,8 +85,12 @@ export async function deleteInvestmentTrade(id: string) {
   return existing
 }
 
-export async function getAssetTradeSummary(assetId: string) {
+export async function getAssetTradeSummary(assetId: string, from?: string, to?: string) {
   const db = getDb()
+
+  const conditions = [eq(investmentTrades.assetId, assetId)]
+  if (from) conditions.push(gte(investmentTrades.date, from))
+  if (to) conditions.push(lt(investmentTrades.date, to))
 
   const rows = await db
     .select({
@@ -95,7 +102,7 @@ export async function getAssetTradeSummary(assetId: string) {
       totalTax: sql<number>`sum(${investmentTrades.tax})`.as('total_tax'),
     })
     .from(investmentTrades)
-    .where(eq(investmentTrades.assetId, assetId))
+    .where(and(...conditions))
     .groupBy(investmentTrades.tradeType)
 
   let totalBought = 0

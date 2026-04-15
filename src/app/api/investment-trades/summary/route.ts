@@ -13,7 +13,10 @@ export async function GET(request: NextRequest) {
     )
   }
 
-  const result = await getAssetInvestmentSummaryService(assetId)
+  const from = searchParams.get('from') ?? undefined
+  const to = searchParams.get('to') ?? undefined
+
+  const result = await getAssetInvestmentSummaryService(assetId, from, to)
   const status = result.success ? 200 : 404
   return Response.json(result, { status })
 }

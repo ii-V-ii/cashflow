@@ -29,6 +29,8 @@ import { useAccounts } from "@/hooks/use-accounts"
 import { formatCurrency } from "@/lib/utils"
 import type { InvestmentTrade, TradeType } from "@/types"
 
+const noScroll = { onWheel: (e: React.WheelEvent<HTMLInputElement>) => e.currentTarget.blur() }
+
 const TRADE_TYPE_LABELS: Record<TradeType, string> = {
   buy: "매수",
   sell: "매도",
@@ -262,10 +264,12 @@ export function TradeFormDialog({
               <Input
                 id="trade-quantity"
                 type="number"
-                step="0.0001"
+                step="1"
+                min="0"
                 placeholder="0"
                 {...register("quantity", { valueAsNumber: true })}
                 aria-invalid={!!errors.quantity}
+                {...noScroll}
               />
               {errors.quantity && (
                 <p className="text-xs text-destructive">
@@ -280,9 +284,11 @@ export function TradeFormDialog({
               <Input
                 id="trade-unit-price"
                 type="number"
+                min="0"
                 placeholder="0"
                 {...register("unitPrice", { valueAsNumber: true })}
                 aria-invalid={!!errors.unitPrice}
+                {...noScroll}
               />
               {errors.unitPrice && (
                 <p className="text-xs text-destructive">
@@ -309,8 +315,10 @@ export function TradeFormDialog({
               <Input
                 id="trade-fee"
                 type="number"
+                min="0"
                 placeholder="0"
                 {...register("fee", { valueAsNumber: true })}
+                {...noScroll}
               />
             </div>
             <div className="flex flex-col gap-2">
@@ -320,8 +328,10 @@ export function TradeFormDialog({
               <Input
                 id="trade-tax"
                 type="number"
+                min="0"
                 placeholder="0"
                 {...register("tax", { valueAsNumber: true })}
+                {...noScroll}
               />
             </div>
           </div>

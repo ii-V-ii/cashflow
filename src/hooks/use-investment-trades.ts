@@ -7,24 +7,30 @@ import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api-client"
 
 const TRADES_KEY = ["investment-trades"] as const
 
-export function useInvestmentTrades(assetId?: string) {
+export function useInvestmentTrades(assetId?: string, from?: string, to?: string) {
   const params = new URLSearchParams()
   if (assetId) params.set("assetId", assetId)
+  if (from) params.set("from", from)
+  if (to) params.set("to", to)
   const qs = params.toString()
 
   return useQuery({
-    queryKey: [...TRADES_KEY, assetId ?? "all"],
+    queryKey: [...TRADES_KEY, assetId ?? "all", from ?? "", to ?? ""],
     queryFn: () =>
       apiGet<InvestmentTrade[]>(`/api/investment-trades${qs ? `?${qs}` : ""}`),
   })
 }
 
-export function useInvestmentTradeSummary(assetId: string) {
+export function useInvestmentTradeSummary(assetId: string, from?: string, to?: string) {
+  const params = new URLSearchParams({ assetId })
+  if (from) params.set("from", from)
+  if (to) params.set("to", to)
+
   return useQuery({
-    queryKey: [...TRADES_KEY, "summary", assetId],
+    queryKey: [...TRADES_KEY, "summary", assetId, from ?? "", to ?? ""],
     queryFn: () =>
       apiGet<AssetInvestmentSummary>(
-        `/api/investment-trades/summary?assetId=${assetId}`,
+        `/api/investment-trades/summary?${params.toString()}`,
       ),
     enabled: !!assetId,
   })
