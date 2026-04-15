@@ -33,7 +33,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { TransactionForm } from "@/components/transactions/TransactionForm"
 import { CsvExportButton } from "@/components/transactions/CsvExportButton"
 import { RecurringList } from "@/components/recurring/RecurringList"
-import { useTransactions, useDeleteTransaction } from "@/hooks/use-transactions"
+import { useTransactions, useDeleteTransaction, type TransactionRow } from "@/hooks/use-transactions"
 import { useCategories } from "@/hooks/use-categories"
 import { useAccounts } from "@/hooks/use-accounts"
 import { formatCurrency } from "@/lib/utils"
@@ -61,22 +61,7 @@ const TYPE_CONFIG = {
   },
 } as const
 
-interface TransactionRow {
-  id: string
-  type: "income" | "expense" | "transfer"
-  status: "pending" | "applied"
-  amount: number
-  description: string
-  categoryId: string | null
-  accountId: string
-  toAccountId: string | null
-  recurringId: string | null
-  date: string
-  memo: string | null
-  tags: string[]
-  installmentMonths: number | null
-  installmentCurrent: number | null
-}
+// TransactionRow는 hooks/use-transactions.ts에서 import
 
 export default function TransactionsPage() {
   const now = new Date()
@@ -132,11 +117,8 @@ export default function TransactionsPage() {
   const { data: accounts } = useAccounts()
   const deleteMutation = useDeleteTransaction()
 
-  const result = data as
-    | { data: TransactionRow[]; meta: { total: number; totalPages: number } }
-    | undefined
-  const transactions = result?.data ?? []
-  const meta = result?.meta
+  const transactions = data?.data ?? []
+  const meta = data?.meta
 
   const handleDelete = useCallback(
     (id: string) => {

@@ -10,10 +10,14 @@ import { formatCompact } from "@/lib/utils"
 
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"]
 
+const INIT_DATE = new Date()
+const INIT_YEAR = INIT_DATE.getFullYear()
+const INIT_MONTH = INIT_DATE.getMonth() + 1
+const TODAY = INIT_DATE.toISOString().slice(0, 10)
+
 export function CalendarWidget() {
-  const now = new Date()
-  const [year, setYear] = useState(now.getFullYear())
-  const [month, setMonth] = useState(now.getMonth() + 1)
+  const [year, setYear] = useState(INIT_YEAR)
+  const [month, setMonth] = useState(INIT_MONTH)
 
   const { data: dailyTotals, isLoading } = useDailyTotals(year, month)
 
@@ -70,7 +74,7 @@ export function CalendarWidget() {
     return days
   }, [year, month])
 
-  const today = now.toISOString().slice(0, 10)
+  const today = TODAY
 
   return (
     <Card className="lg:col-span-2">

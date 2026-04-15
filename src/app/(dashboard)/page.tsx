@@ -22,12 +22,12 @@ import { useAssets } from "@/hooks/use-assets"
 import { useAnnualTradeReport } from "@/hooks/use-investment-trades"
 import { formatCurrency } from "@/lib/utils"
 
+const CURRENT_YEAR = new Date().getFullYear()
+
 export default function DashboardPage() {
   const { data: dashboard, isLoading } = useDashboard()
   const { data: assets } = useAssets()
-
-  const now = new Date()
-  const { data: tradeReport } = useAnnualTradeReport(now.getFullYear())
+  const { data: tradeReport } = useAnnualTradeReport(CURRENT_YEAR)
 
   // 순자산 계산
   const totalAssetValue = (assets ?? []).reduce((sum, a) => sum + a.currentValue, 0)
@@ -91,7 +91,7 @@ export default function DashboardPage() {
 
         {/* 투자 수익 */}
         <SummaryCard
-          title={`${now.getFullYear()}년 투자 수익`}
+          title={`${CURRENT_YEAR}년 투자 수익`}
           icon={BarChart3}
           value={formatCurrency(investReturn)}
           valueClassName={investReturn >= 0 ? "text-emerald-600" : "text-rose-600"}

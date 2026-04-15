@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo } from "react"
-import { useForm } from "react-hook-form"
+import { useForm, Controller } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { Plus, Pencil } from "lucide-react"
@@ -256,29 +256,32 @@ export function TransactionForm({ editTransaction, open: controlledOpen, onOpenC
 
               {/* 카드 계좌 선택 시 할부 옵션 */}
               {t === "expense" && isCardAccount && (
-                <div>
-                  <label className="text-xs font-medium text-muted-foreground">
-                    할부
-                  </label>
-                  <select
-                    className="flex h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                    value={form.watch("installmentMonths") ?? ""}
-                    onChange={(e) => {
-                      const v = e.target.value
-                      form.setValue(
-                        "installmentMonths",
-                        v === "" ? null : Number(v)
-                      )
-                    }}
-                  >
-                    <option value="">일시불</option>
-                    {[2, 3, 6, 10, 12, 24, 36].map((m) => (
-                      <option key={m} value={m}>
-                        {m}개월
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <Controller
+                  control={form.control}
+                  name="installmentMonths"
+                  render={({ field }) => (
+                    <div>
+                      <label className="text-xs font-medium text-muted-foreground">
+                        할부
+                      </label>
+                      <select
+                        className="flex h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                        value={field.value ?? ""}
+                        onChange={(e) => {
+                          const v = e.target.value
+                          field.onChange(v === "" ? null : Number(v))
+                        }}
+                      >
+                        <option value="">일시불</option>
+                        {[2, 3, 6, 10, 12, 24, 36].map((m) => (
+                          <option key={m} value={m}>
+                            {m}개월
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                />
               )}
 
               {/* 이체 또는 저축성 지출: 도착 계좌 */}
@@ -332,15 +335,21 @@ export function TransactionForm({ editTransaction, open: controlledOpen, onOpenC
               )}
 
               {/* 태그 */}
-              <div>
-                <label className="text-xs font-medium text-muted-foreground">
-                  태그
-                </label>
-                <TagInput
-                  value={form.watch("tags")}
-                  onChange={(tags) => form.setValue("tags", tags)}
-                />
-              </div>
+              <Controller
+                control={form.control}
+                name="tags"
+                render={({ field }) => (
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground">
+                      태그
+                    </label>
+                    <TagInput
+                      value={field.value}
+                      onChange={field.onChange}
+                    />
+                  </div>
+                )}
+              />
 
               {/* 메모 */}
               <div>

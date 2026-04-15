@@ -3,17 +3,22 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api-client"
 import type { TransactionFilter } from "@/types"
+import type { CreateTransactionInput, UpdateTransactionInput } from "@/lib/validators/transaction"
 
-interface TransactionRow {
+export interface TransactionRow {
   id: string
-  type: string
+  type: "income" | "expense" | "transfer"
   amount: number
   description: string
+  status: "pending" | "applied"
   categoryId: string | null
   accountId: string
   toAccountId: string | null
+  recurringId: string | null
   date: string
   memo: string | null
+  installmentMonths: number | null
+  installmentCurrent: number | null
   tags: string[]
   createdAt: string
   updatedAt: string
@@ -29,6 +34,8 @@ interface TransactionParams {
   page?: number
   limit?: number
 }
+
+const TRANSACTIONS_KEY = ["transactions"] as const
 
 function buildSearchParams(params?: TransactionParams): string {
   const sp = new URLSearchParams()
@@ -51,13 +58,13 @@ function buildSearchParams(params?: TransactionParams): string {
 
 export function useTransactions(params?: TransactionParams) {
   const qs = buildSearchParams(params)
-  return useQuery({
-    queryKey: ["transactions", qs],
+  return useQuery<TransactionListResponse>({
+    queryKey: [...TRANSACTIONS_KEY, params ?? {}],
     queryFn: async () => {
       const res = await fetch(`/api/transactions?${qs}`)
       const json = await res.json()
       if (!json.success) throw new Error(json.error?.message ?? "거래 목록 로드 실패")
-      return json as { success: true } & TransactionListResponse
+      return { data: json.data, meta: json.meta }
     },
   })
 }
@@ -65,10 +72,10 @@ export function useTransactions(params?: TransactionParams) {
 export function useCreateTransaction() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (data: Record<string, unknown>) =>
+    mutationFn: (data: CreateTransactionInput) =>
       apiPost<TransactionRow>("/api/transactions", data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["transactions"] })
+      qc.invalidateQueries({ queryKey: TRANSACTIONS_KEY })
       qc.invalidateQueries({ queryKey: ["dashboard"] })
       qc.invalidateQueries({ queryKey: ["accounts"] })
     },
@@ -78,10 +85,10 @@ export function useCreateTransaction() {
 export function useUpdateTransaction() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
+    mutationFn: ({ id, data }: { id: string; data: UpdateTransactionInput }) =>
       apiPut<TransactionRow>(`/api/transactions/${id}`, data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["transactions"] })
+      qc.invalidateQueries({ queryKey: TRANSACTIONS_KEY })
       qc.invalidateQueries({ queryKey: ["dashboard"] })
       qc.invalidateQueries({ queryKey: ["accounts"] })
     },
@@ -94,7 +101,7 @@ export function useDeleteTransaction() {
     mutationFn: (id: string) =>
       apiDelete<{ deleted: true }>(`/api/transactions/${id}`),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["transactions"] })
+      qc.invalidateQueries({ queryKey: TRANSACTIONS_KEY })
       qc.invalidateQueries({ queryKey: ["dashboard"] })
       qc.invalidateQueries({ queryKey: ["accounts"] })
     },

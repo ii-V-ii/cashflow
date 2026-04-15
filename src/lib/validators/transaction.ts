@@ -35,5 +35,5 @@ export const updateTransactionSchema = baseTransactionSchema.partial().refine(
   { message: '금액은 양수여야 합니다', path: ['amount'] },
 )
 
-export type CreateTransactionInput = z.infer<typeof createTransactionSchema>
-export type UpdateTransactionInput = z.infer<typeof updateTransactionSchema>
+export type CreateTransactionInput = z.input<typeof createTransactionSchema>
+export type UpdateTransactionInput = z.input<typeof updateTransactionSchema>
