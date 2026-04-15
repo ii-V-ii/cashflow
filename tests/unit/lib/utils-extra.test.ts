@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatNumber, monthDateRange } from '@/lib/utils'
+import { formatNumber, monthDateRange, yearDateRange } from '@/lib/utils'
 
 describe('formatNumber', () => {
   it('양수를 포맷한다', () => {
@@ -38,5 +38,19 @@ describe('monthDateRange', () => {
     const { start, end } = monthDateRange(2026, 3)
     expect(start).toBe('2026-03-01')
     expect(end).toBe('2026-04-01')
+  })
+})
+
+describe('yearDateRange', () => {
+  it('연간 범위를 반환한다', () => {
+    const { start, end } = yearDateRange(2026)
+    expect(start).toBe('2026-01-01')
+    expect(end).toBe('2027-01-01')
+  })
+
+  it('다른 연도를 반환한다', () => {
+    const { start, end } = yearDateRange(2025)
+    expect(start).toBe('2025-01-01')
+    expect(end).toBe('2026-01-01')
   })
 })

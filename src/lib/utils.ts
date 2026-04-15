@@ -34,6 +34,10 @@ export function generateId(): string {
   return nanoid()
 }
 
+export function yearDateRange(year: number) {
+  return { start: `${year}-01-01`, end: `${year + 1}-01-01` }
+}
+
 export function monthDateRange(year: number, month: number) {
   const start = `${year}-${String(month).padStart(2, '0')}-01`
   const nextMonth = month === 12 ? 1 : month + 1

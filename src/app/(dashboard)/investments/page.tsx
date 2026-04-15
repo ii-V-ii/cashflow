@@ -344,42 +344,59 @@ function SummaryTab({ assets, accounts }: SummaryTabProps) {
 
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null)
 
-  // 월 네비게이터: "전체" 또는 특정 월
+  // 기간 네비게이터: "전체" / "월간" / "연간"
   const now = new Date()
-  const [summaryMode, setSummaryMode] = useState<"all" | "month">("month")
+  const [summaryMode, setSummaryMode] = useState<"all" | "month" | "year">("month")
   const [summaryYear, setSummaryYear] = useState(now.getFullYear())
   const [summaryMonth, setSummaryMonth] = useState(now.getMonth() + 1)
 
-  const summaryFrom = summaryMode === "month"
-    ? `${summaryYear}-${String(summaryMonth).padStart(2, "0")}-01`
-    : undefined
-  const summaryTo = summaryMode === "month"
-    ? (summaryMonth === 12
-      ? `${summaryYear + 1}-01-01`
-      : `${summaryYear}-${String(summaryMonth + 1).padStart(2, "0")}-01`)
-    : undefined
+  const summaryFrom = useMemo(() => {
+    if (summaryMode === "month")
+      return `${summaryYear}-${String(summaryMonth).padStart(2, "0")}-01`
+    if (summaryMode === "year")
+      return `${summaryYear}-01-01`
+    return undefined
+  }, [summaryMode, summaryYear, summaryMonth])
 
-  const handleSummaryPrevMonth = useCallback(() => {
-    setSummaryMode("month")
-    setSummaryMonth((m) => {
-      if (m === 1) {
-        setSummaryYear((y) => y - 1)
-        return 12
-      }
-      return m - 1
-    })
-  }, [])
+  const summaryTo = useMemo(() => {
+    if (summaryMode === "month")
+      return summaryMonth === 12
+        ? `${summaryYear + 1}-01-01`
+        : `${summaryYear}-${String(summaryMonth + 1).padStart(2, "0")}-01`
+    if (summaryMode === "year")
+      return `${summaryYear + 1}-01-01`
+    return undefined
+  }, [summaryMode, summaryYear, summaryMonth])
 
-  const handleSummaryNextMonth = useCallback(() => {
-    setSummaryMode("month")
-    setSummaryMonth((m) => {
-      if (m === 12) {
-        setSummaryYear((y) => y + 1)
-        return 1
-      }
-      return m + 1
-    })
-  }, [])
+  const handleSummaryPrev = useCallback(() => {
+    if (summaryMode === "year") {
+      setSummaryYear((y) => y - 1)
+    } else {
+      setSummaryMode("month")
+      setSummaryMonth((m) => {
+        if (m === 1) {
+          setSummaryYear((y) => y - 1)
+          return 12
+        }
+        return m - 1
+      })
+    }
+  }, [summaryMode])
+
+  const handleSummaryNext = useCallback(() => {
+    if (summaryMode === "year") {
+      setSummaryYear((y) => y + 1)
+    } else {
+      setSummaryMode("month")
+      setSummaryMonth((m) => {
+        if (m === 12) {
+          setSummaryYear((y) => y + 1)
+          return 1
+        }
+        return m + 1
+      })
+    }
+  }, [summaryMode])
 
   if (investmentAssets.length === 0) {
     return (
@@ -391,23 +408,34 @@ function SummaryTab({ assets, accounts }: SummaryTabProps) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-center gap-2">
-        <Button
-          variant={summaryMode === "all" ? "default" : "outline"}
-          size="sm"
-          onClick={() => setSummaryMode("all")}
-        >
-          전체
-        </Button>
-        <Button variant="outline" size="icon-sm" onClick={handleSummaryPrevMonth} aria-label="이전 달">
-          <ChevronLeft className="size-4" />
-        </Button>
-        <span className="min-w-24 text-center text-sm font-semibold">
-          {summaryMode === "all" ? "전체 기간" : `${summaryYear}년 ${summaryMonth}월`}
-        </span>
-        <Button variant="outline" size="icon-sm" onClick={handleSummaryNextMonth} aria-label="다음 달">
-          <ChevronRight className="size-4" />
-        </Button>
+      <div className="flex flex-col items-center gap-2">
+        <div className="flex items-center gap-1">
+          {(["all", "month", "year"] as const).map((mode) => (
+            <Button
+              key={mode}
+              variant={summaryMode === mode ? "default" : "outline"}
+              size="sm"
+              onClick={() => setSummaryMode(mode)}
+            >
+              {mode === "all" ? "전체" : mode === "month" ? "월간" : "연간"}
+            </Button>
+          ))}
+        </div>
+        {summaryMode !== "all" && (
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="icon-sm" onClick={handleSummaryPrev} aria-label="이전">
+              <ChevronLeft className="size-4" />
+            </Button>
+            <span className="min-w-28 text-center text-sm font-semibold">
+              {summaryMode === "year"
+                ? `${summaryYear}년`
+                : `${summaryYear}년 ${summaryMonth}월`}
+            </span>
+            <Button variant="outline" size="icon-sm" onClick={handleSummaryNext} aria-label="다음">
+              <ChevronRight className="size-4" />
+            </Button>
+          </div>
+        )}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
