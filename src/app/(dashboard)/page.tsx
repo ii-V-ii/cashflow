@@ -12,6 +12,7 @@ import {
 import { BudgetWidget } from "@/components/dashboard/BudgetWidget"
 import { AssetWidget } from "@/components/dashboard/AssetWidget"
 import { InvestmentWidget } from "@/components/dashboard/InvestmentWidget"
+import { CalendarWidget } from "@/components/dashboard/CalendarWidget"
 import {
   Card,
   CardContent,
@@ -134,6 +135,9 @@ export default function DashboardPage() {
           )
         })}
       </div>
+
+      {/* 거래 캘린더 */}
+      <CalendarWidget />
 
       <div className="grid gap-4 lg:grid-cols-2">
         {/* 순자산 */}

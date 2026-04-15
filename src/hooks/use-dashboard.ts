@@ -27,3 +27,17 @@ export function useDashboard() {
     queryFn: () => apiGet<DashboardData>("/api/dashboard"),
   })
 }
+
+interface DailyTotal {
+  date: string
+  income: number
+  expense: number
+}
+
+export function useDailyTotals(year: number, month: number) {
+  return useQuery({
+    queryKey: ["dashboard", "daily-totals", year, month],
+    queryFn: () =>
+      apiGet<DailyTotal[]>(`/api/dashboard/daily-totals?year=${year}&month=${month}`),
+  })
+}
