@@ -329,6 +329,7 @@ export const investmentTrades = pgTable(
     netAmount: integer('net_amount').notNull(),
     memo: text('memo'),
     accountId: text('account_id').references(() => accounts.id, { onDelete: 'set null' }),
+    remainingQuantity: numeric('remaining_quantity', { precision: 12, scale: 4, mode: 'number' }).notNull().default(0),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
   },
@@ -336,6 +337,7 @@ export const investmentTrades = pgTable(
     index('idx_investment_trades_asset_id').on(table.assetId),
     index('idx_investment_trades_date').on(table.date),
     index('idx_investment_trades_account_id').on(table.accountId),
+    index('idx_investment_trades_open_lots').on(table.assetId, table.ticker, table.tradeType, table.remainingQuantity),
   ],
 )
 

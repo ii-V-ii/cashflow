@@ -1,0 +1,2 @@
+ALTER TABLE "investment_trades" ADD COLUMN "remaining_quantity" numeric(12, 4) DEFAULT 0 NOT NULL;--> statement-breakpoint
+CREATE INDEX "idx_investment_trades_open_lots" ON "investment_trades" USING btree ("asset_id","ticker","trade_type","remaining_quantity");

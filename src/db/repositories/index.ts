@@ -91,6 +91,8 @@ export {
   getAssetTradeSummary,
   getTickerSummaries,
   getMonthlyTradeSummary,
+  matchSellToLots,
+  reverseLotMatching,
 } from './investment-trade-repository'
 
 export {

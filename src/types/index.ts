@@ -377,6 +377,7 @@ export interface InvestmentTrade {
   readonly netAmount: number // KRW 정수
   readonly memo: string | null
   readonly accountId: string | null
+  readonly remainingQuantity: number // FIFO 로트 잔여 수량 (buy만 사용)
   readonly createdAt: Date
   readonly updatedAt: Date
 }

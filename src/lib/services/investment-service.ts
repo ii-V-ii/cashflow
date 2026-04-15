@@ -15,6 +15,8 @@ import {
   getAssetTradeSummary,
   getTickerSummaries,
   getMonthlyTradeSummary,
+  matchSellToLots,
+  reverseLotMatching,
   updateAccountBalance,
   findAccountById,
   syncAssetFromAccount,
@@ -230,6 +232,8 @@ export async function createTradeService(
   const id = generateId()
 
   await db.transaction(async (tx) => {
+    const isBuy = parsed.data.tradeType === 'buy'
+
     await tx.insert(investmentTrades).values({
       id,
       assetId: parsed.data.assetId,
@@ -244,10 +248,22 @@ export async function createTradeService(
       netAmount: parsed.data.netAmount,
       memo: parsed.data.memo ?? null,
       accountId: parsed.data.accountId ?? null,
+      remainingQuantity: isBuy ? parsed.data.quantity : 0,
     })
 
+    // sell → FIFO 로트 매칭
+    if (parsed.data.tradeType === 'sell') {
+      await matchSellToLots(
+        parsed.data.assetId,
+        parsed.data.ticker ?? null,
+        parsed.data.quantity,
+        parsed.data.unitPrice,
+        tx,
+      )
+    }
+
     if (parsed.data.accountId) {
-      const delta = parsed.data.tradeType === 'buy'
+      const delta = isBuy
         ? -parsed.data.totalAmount
         : parsed.data.netAmount
       await updateAccountBalance(parsed.data.accountId, delta, tx)
@@ -285,6 +301,11 @@ export async function deleteTradeService(
   const db = getDb()
 
   await db.transaction(async (tx) => {
+    // sell 삭제 → 로트 복원
+    if (trade.tradeType === 'sell') {
+      await reverseLotMatching(trade.assetId, trade.ticker, trade.quantity, tx)
+    }
+
     await tx.delete(investmentTrades).where(eq(investmentTrades.id, id))
 
     if (trade.accountId) {

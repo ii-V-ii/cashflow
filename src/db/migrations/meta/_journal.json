@@ -71,6 +71,13 @@
       "when": 1776214071850,
       "tag": "0009_petite_liz_osborn",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1776257194296,
+      "tag": "0010_steady_deathstrike",
+      "breakpoints": true
     }
   ]
 }

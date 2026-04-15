@@ -11,6 +11,8 @@ vi.mock('@/db/repositories', () => ({
   getAssetTradeSummary: vi.fn(),
   getMonthlyTradeSummary: vi.fn(),
   getTickerSummaries: vi.fn(),
+  matchSellToLots: vi.fn().mockResolvedValue({ realizedGain: 0, matchedLots: [] }),
+  reverseLotMatching: vi.fn().mockResolvedValue(undefined),
   updateAccountBalance: vi.fn(),
   syncAssetFromAccount: vi.fn(),
 }))

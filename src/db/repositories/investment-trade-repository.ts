@@ -1,4 +1,4 @@
-import { eq, and, sql, desc, gte, lt } from 'drizzle-orm'
+import { eq, and, sql, desc, asc, gte, lt, gt } from 'drizzle-orm'
 import { getDb } from '../index'
 import { investmentTrades, assets } from '../schema'
 import { generateId } from '../../lib/utils'
@@ -330,5 +330,108 @@ export async function getAssetTradeSummary(assetId: string, from?: string, to?: 
     avgBuyPrice,
     realizedGain,
     totalReturn,
+  }
+}
+
+// === FIFO Lot Matching ===
+
+interface MatchedLot {
+  buyTradeId: string
+  quantity: number
+  costPerUnit: number
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function matchSellToLots(
+  assetId: string,
+  ticker: string | null,
+  sellQty: number,
+  sellUnitPrice: number,
+  tx: any,
+): Promise<{ realizedGain: number; matchedLots: MatchedLot[] }> {
+  // 열린 로트를 FIFO 순서로 조회
+  const openLots = await tx
+    .select({
+      id: investmentTrades.id,
+      unitPrice: investmentTrades.unitPrice,
+      remainingQuantity: investmentTrades.remainingQuantity,
+    })
+    .from(investmentTrades)
+    .where(and(
+      eq(investmentTrades.assetId, assetId),
+      ticker ? eq(investmentTrades.ticker, ticker) : sql`${investmentTrades.ticker} IS NULL`,
+      eq(investmentTrades.tradeType, 'buy' as const),
+      gt(investmentTrades.remainingQuantity, 0),
+    ))
+    .orderBy(asc(investmentTrades.date), asc(investmentTrades.createdAt))
+
+  let remaining = sellQty
+  let realizedGain = 0
+  const matchedLots: MatchedLot[] = []
+
+  for (const lot of openLots) {
+    if (remaining <= 0) break
+
+    const lotRemaining = Number(lot.remainingQuantity)
+    const matched = Math.min(lotRemaining, remaining)
+    const costPerUnit = Number(lot.unitPrice)
+
+    realizedGain += Math.round(matched * (sellUnitPrice - costPerUnit))
+    matchedLots.push({ buyTradeId: lot.id, quantity: matched, costPerUnit })
+
+    const newRemaining = lotRemaining - matched
+    await tx.update(investmentTrades)
+      .set({ remainingQuantity: newRemaining })
+      .where(eq(investmentTrades.id, lot.id))
+
+    remaining -= matched
+  }
+
+  if (remaining > 0) {
+    throw new Error('보유수량 부족: 매도 수량이 매수 잔여 수량을 초과합니다')
+  }
+
+  return { realizedGain, matchedLots }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function reverseLotMatching(
+  assetId: string,
+  ticker: string | null,
+  sellQty: number,
+  tx: any,
+): Promise<void> {
+  // 역 FIFO: 가장 최근에 차감된 로트(remaining < quantity)부터 복원
+  const partialLots = await tx
+    .select({
+      id: investmentTrades.id,
+      quantity: investmentTrades.quantity,
+      remainingQuantity: investmentTrades.remainingQuantity,
+    })
+    .from(investmentTrades)
+    .where(and(
+      eq(investmentTrades.assetId, assetId),
+      ticker ? eq(investmentTrades.ticker, ticker) : sql`${investmentTrades.ticker} IS NULL`,
+      eq(investmentTrades.tradeType, 'buy' as const),
+    ))
+    .orderBy(desc(investmentTrades.date), desc(investmentTrades.createdAt))
+
+  let toRestore = sellQty
+
+  for (const lot of partialLots) {
+    if (toRestore <= 0) break
+
+    const lotQty = Number(lot.quantity)
+    const lotRemaining = Number(lot.remainingQuantity)
+    const consumed = lotQty - lotRemaining // 이 로트에서 매도된 수량
+
+    if (consumed <= 0) continue
+
+    const restore = Math.min(consumed, toRestore)
+    await tx.update(investmentTrades)
+      .set({ remainingQuantity: lotRemaining + restore })
+      .where(eq(investmentTrades.id, lot.id))
+
+    toRestore -= restore
   }
 }
