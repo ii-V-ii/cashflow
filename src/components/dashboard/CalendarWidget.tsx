@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useDailyTotals } from "@/hooks/use-dashboard"
-import { formatCurrency } from "@/lib/utils"
+import { formatCompact } from "@/lib/utils"
 
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"]
 
@@ -111,7 +111,7 @@ export function CalendarWidget() {
             {/* 날짜 셀 */}
             {calendarDays.map((cell, idx) => {
               if (cell.day === null) {
-                return <div key={`empty-${idx}`} className="bg-background min-h-16" />
+                return <div key={`empty-${idx}`} className="bg-background min-h-18" />
               }
 
               const totals = cell.dateStr ? totalsMap.get(cell.dateStr) : null
@@ -121,7 +121,7 @@ export function CalendarWidget() {
               return (
                 <div
                   key={cell.dateStr}
-                  className={`bg-background min-h-16 p-1 ${isToday ? "ring-2 ring-inset ring-primary" : ""}`}
+                  className={`bg-background min-h-18 p-1 ${isToday ? "ring-2 ring-inset ring-primary" : ""}`}
                 >
                   <span className={`text-xs font-medium ${dayOfWeek === 0 ? "text-rose-500" : dayOfWeek === 6 ? "text-blue-500" : ""} ${isToday ? "font-bold text-primary" : ""}`}>
                     {cell.day}
@@ -129,13 +129,13 @@ export function CalendarWidget() {
                   {totals && (
                     <div className="mt-0.5 space-y-0.5">
                       {totals.income > 0 && (
-                        <div className="text-[10px] font-mono text-emerald-600 leading-tight truncate">
-                          +{formatCurrency(totals.income)}
+                        <div className="text-[10px] font-mono text-emerald-600 leading-tight">
+                          +{formatCompact(totals.income)}
                         </div>
                       )}
                       {totals.expense > 0 && (
-                        <div className="text-[10px] font-mono text-rose-600 leading-tight truncate">
-                          -{formatCurrency(totals.expense)}
+                        <div className="text-[10px] font-mono text-rose-600 leading-tight">
+                          -{formatCompact(totals.expense)}
                         </div>
                       )}
                     </div>

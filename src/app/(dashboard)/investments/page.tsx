@@ -464,10 +464,16 @@ function SummaryTab({ assets, accounts }: SummaryTabProps) {
 }
 
 function AssetSummaryCard({ assetId, from, to, isSelected, onSelect }: { assetId: string; from?: string; to?: string; isSelected: boolean; onSelect: () => void }) {
-  const { data: summary, isLoading } = useInvestmentTradeSummary(assetId, from, to)
+  const { data: summary, isLoading, error } = useInvestmentTradeSummary(assetId, from, to)
 
   if (isLoading) return <Skeleton className="h-48" />
-  if (!summary) return null
+  if (error || !summary) {
+    return (
+      <Card className="p-4">
+        <p className="text-sm text-muted-foreground text-center">데이터를 불러올 수 없습니다</p>
+      </Card>
+    )
+  }
 
   const isPositiveReturn = summary.totalReturn >= 0
 

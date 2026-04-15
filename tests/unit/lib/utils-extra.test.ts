@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatNumber, monthDateRange, yearDateRange } from '@/lib/utils'
+import { formatNumber, formatCompact, monthDateRange, yearDateRange } from '@/lib/utils'
 
 describe('formatNumber', () => {
   it('양수를 포맷한다', () => {
@@ -12,6 +12,32 @@ describe('formatNumber', () => {
 
   it('0을 포맷한다', () => {
     expect(formatNumber(0)).toBe('0')
+  })
+})
+
+describe('formatCompact', () => {
+  it('억 단위를 축약한다', () => {
+    expect(formatCompact(150000000)).toBe('1.5억')
+  })
+
+  it('만 단위를 축약한다', () => {
+    expect(formatCompact(5000000)).toBe('500만')
+    expect(formatCompact(50000)).toBe('5만')
+    expect(formatCompact(12300)).toBe('1.2만')
+  })
+
+  it('천 단위를 축약한다', () => {
+    expect(formatCompact(5000)).toBe('5천')
+    expect(formatCompact(3500)).toBe('3.5천')
+  })
+
+  it('천 미만은 그대로 표시한다', () => {
+    expect(formatCompact(999)).toBe('999')
+    expect(formatCompact(0)).toBe('0')
+  })
+
+  it('절대값을 사용한다', () => {
+    expect(formatCompact(-50000)).toBe('5만')
   })
 })
 

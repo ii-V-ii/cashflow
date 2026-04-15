@@ -34,6 +34,24 @@ export function generateId(): string {
   return nanoid()
 }
 
+/** 금액을 억/만/천 단위로 축약 (캘린더 등 좁은 공간용) */
+export function formatCompact(amount: number): string {
+  const abs = Math.abs(amount)
+  if (abs >= 100000000) {
+    const v = abs / 100000000
+    return `${v % 1 === 0 ? v : v.toFixed(1)}억`
+  }
+  if (abs >= 10000) {
+    const v = abs / 10000
+    return `${v % 1 === 0 ? v : v.toFixed(1)}만`
+  }
+  if (abs >= 1000) {
+    const v = abs / 1000
+    return `${v % 1 === 0 ? v : v.toFixed(1)}천`
+  }
+  return String(abs)
+}
+
 export function yearDateRange(year: number) {
   return { start: `${year}-01-01`, end: `${year + 1}-01-01` }
 }
