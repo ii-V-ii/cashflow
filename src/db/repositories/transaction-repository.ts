@@ -1,7 +1,7 @@
 import { eq, and, gte, lte, lt, like, desc, sql, inArray } from 'drizzle-orm'
 import { format } from 'date-fns'
 import { getDb } from '../index'
-import { transactions, transactionTags, tags, assets, assetValuations, accounts } from '../schema'
+import { transactions, transactionTags, tags, assets, assetValuations, accounts, investmentTrades } from '../schema'
 import { generateId } from '../../lib/utils'
 import { updateAccountBalance } from './account-repository'
 import type { CreateTransactionInput, UpdateTransactionInput } from '../../lib/validators'
@@ -426,17 +426,36 @@ export async function syncAssetFromAccount(accountId: string, tx?: any) {
   `) as unknown as Array<{ asset_id: string; total: number }>
 
   if (!rows[0]) return
-  const { asset_id: assetId, total: totalBalance } = rows[0]
+  const { asset_id: assetId, total: cashBalance } = rows[0]
   const today = format(new Date(), 'yyyy-MM-dd')
 
-  // 2. 자산 갱신 + 평가이력 upsert (2쿼리, 병렬)
+  // 2. 보유주식 매수원가 조회 (ticker별 보유수량 × 평균매수단가)
+  const holdingsRows = await executor.execute(sql`
+    SELECT COALESCE(SUM(
+      CASE WHEN holding_qty > 0 THEN ROUND(buy_total::numeric / buy_qty * holding_qty) ELSE 0 END
+    ), 0)::integer AS holdings_cost
+    FROM (
+      SELECT ticker,
+        SUM(CASE WHEN trade_type = 'buy' THEN quantity ELSE 0 END) AS buy_qty,
+        SUM(CASE WHEN trade_type = 'buy' THEN total_amount ELSE 0 END) AS buy_total,
+        SUM(CASE WHEN trade_type = 'buy' THEN quantity WHEN trade_type = 'sell' THEN -quantity ELSE 0 END) AS holding_qty
+      FROM ${investmentTrades}
+      WHERE ${investmentTrades.assetId} = ${assetId}
+      GROUP BY ticker
+    ) t
+  `) as unknown as Array<{ holdings_cost: number }>
+
+  const holdingsCost = holdingsRows[0]?.holdings_cost ?? 0
+  const totalValue = cashBalance + holdingsCost
+
+  // 3. 자산 갱신 + 평가이력 upsert (2쿼리, 병렬)
   await Promise.all([
-    executor.update(assets).set({ currentValue: totalBalance }).where(eq(assets.id, assetId)),
+    executor.update(assets).set({ currentValue: totalValue }).where(eq(assets.id, assetId)),
     executor.insert(assetValuations).values({
-      id: generateId(), assetId, date: today, value: totalBalance, source: 'auto',
+      id: generateId(), assetId, date: today, value: totalValue, source: 'auto',
     }).onConflictDoUpdate({
       target: [assetValuations.assetId, assetValuations.date],
-      set: { value: totalBalance, source: 'auto' },
+      set: { value: totalValue, source: 'auto' },
     }),
   ])
 }
