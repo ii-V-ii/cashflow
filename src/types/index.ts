@@ -390,7 +390,6 @@ export interface AssetInvestmentSummary {
   readonly totalQuantity: number // 보유 수량 (매수-매도)
   readonly avgBuyPrice: number // 평균 매수단가
   readonly realizedGain: number // 실현손익
-  readonly unrealizedGain: number // 미실현손익 (현재가치 - 보유수량×평균단가)
   readonly totalReturn: number // 총 수익률 %
 }
 

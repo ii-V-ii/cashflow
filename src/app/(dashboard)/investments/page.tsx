@@ -346,7 +346,7 @@ function SummaryTab({ assets, accounts }: SummaryTabProps) {
 
   // 월 네비게이터: "전체" 또는 특정 월
   const now = new Date()
-  const [summaryMode, setSummaryMode] = useState<"all" | "month">("all")
+  const [summaryMode, setSummaryMode] = useState<"all" | "month">("month")
   const [summaryYear, setSummaryYear] = useState(now.getFullYear())
   const [summaryMonth, setSummaryMonth] = useState(now.getMonth() + 1)
 
@@ -424,7 +424,7 @@ function SummaryTab({ assets, accounts }: SummaryTabProps) {
       </div>
 
       {selectedAssetId && (
-        <TickerDetail assetId={selectedAssetId} assetName={investmentAssets.find(a => a.id === selectedAssetId)?.name ?? ""} />
+        <TickerDetail assetId={selectedAssetId} assetName={investmentAssets.find(a => a.id === selectedAssetId)?.name ?? ""} from={summaryFrom} to={summaryTo} />
       )}
     </div>
   )
@@ -461,7 +461,6 @@ function AssetSummaryCard({ assetId, from, to, isSelected, onSelect }: { assetId
           <SummaryRow label="총 매도액" value={`${formatCurrency(summary.totalSold)}원`} />
           <SummaryRow label="배당수익" value={`${formatCurrency(summary.totalDividend)}원`} className="text-emerald-600" />
           <SummaryRow label="실현손익" value={`${formatCurrency(summary.realizedGain)}원`} className={summary.realizedGain >= 0 ? "text-emerald-600" : "text-rose-600"} />
-          <SummaryRow label="미실현손익" value={`${formatCurrency(summary.unrealizedGain)}원`} className={summary.unrealizedGain >= 0 ? "text-emerald-600" : "text-rose-600"} />
           <SummaryRow
             label="수익률"
             value={`${isPositiveReturn ? "+" : "-"}${Math.abs(summary.totalReturn).toFixed(2)}%`}
@@ -474,8 +473,8 @@ function AssetSummaryCard({ assetId, from, to, isSelected, onSelect }: { assetId
 }
 
 // 종목별 상세
-function TickerDetail({ assetId, assetName }: { assetId: string; assetName: string }) {
-  const { data: trades } = useInvestmentTrades(assetId)
+function TickerDetail({ assetId, assetName, from, to }: { assetId: string; assetName: string; from?: string; to?: string }) {
+  const { data: trades } = useInvestmentTrades(assetId, from, to)
   const [expandedTickers, setExpandedTickers] = useState<Set<string>>(new Set())
 
   const toggleTicker = useCallback((ticker: string) => {

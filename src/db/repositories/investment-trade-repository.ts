@@ -87,65 +87,105 @@ export async function deleteInvestmentTrade(id: string) {
 
 export async function getAssetTradeSummary(assetId: string, from?: string, to?: string) {
   const db = getDb()
+  const isMonthly = !!(from && to)
 
-  const conditions = [eq(investmentTrades.assetId, assetId)]
-  if (from) conditions.push(gte(investmentTrades.date, from))
-  if (to) conditions.push(lt(investmentTrades.date, to))
+  // 1) 누적 매수 (ticker별) - 평균매수단가 계산용
+  const cumBuyConditions = [
+    eq(investmentTrades.assetId, assetId),
+    eq(investmentTrades.tradeType, 'buy' as const),
+  ]
+  if (isMonthly) cumBuyConditions.push(lt(investmentTrades.date, to))
 
-  const rows = await db
+  const buyRowsPromise = db
     .select({
-      tradeType: investmentTrades.tradeType,
+      ticker: investmentTrades.ticker,
       totalQuantity: sql<number>`sum(${investmentTrades.quantity})`.as('total_quantity'),
       totalAmount: sql<number>`sum(${investmentTrades.totalAmount})`.as('total_amount'),
-      totalNetAmount: sql<number>`sum(${investmentTrades.netAmount})`.as('total_net_amount'),
-      totalFee: sql<number>`sum(${investmentTrades.fee})`.as('total_fee'),
-      totalTax: sql<number>`sum(${investmentTrades.tax})`.as('total_tax'),
     })
     .from(investmentTrades)
-    .where(and(...conditions))
-    .groupBy(investmentTrades.tradeType)
+    .where(and(...cumBuyConditions))
+    .groupBy(investmentTrades.ticker)
 
+  // 2) 누적 매도 수량 (보유수량 계산용)
+  const cumSellConditions = [
+    eq(investmentTrades.assetId, assetId),
+    eq(investmentTrades.tradeType, 'sell' as const),
+  ]
+  if (isMonthly) cumSellConditions.push(lt(investmentTrades.date, to))
+
+  const cumSellPromise = db
+    .select({
+      totalQuantity: sql<number>`sum(${investmentTrades.quantity})`.as('total_quantity'),
+    })
+    .from(investmentTrades)
+    .where(and(...cumSellConditions))
+
+  // 3) 매도/배당 (ticker별) - 실현손익 계산
+  const sellDivConditions = [
+    eq(investmentTrades.assetId, assetId),
+    sql`${investmentTrades.tradeType} IN ('sell', 'dividend')`,
+  ]
+  if (isMonthly) {
+    sellDivConditions.push(gte(investmentTrades.date, from))
+    sellDivConditions.push(lt(investmentTrades.date, to))
+  }
+
+  const sellDivPromise = db
+    .select({
+      ticker: investmentTrades.ticker,
+      tradeType: investmentTrades.tradeType,
+      totalQuantity: sql<number>`sum(${investmentTrades.quantity})`.as('total_quantity'),
+      totalNetAmount: sql<number>`sum(${investmentTrades.netAmount})`.as('total_net_amount'),
+    })
+    .from(investmentTrades)
+    .where(and(...sellDivConditions))
+    .groupBy(investmentTrades.ticker, investmentTrades.tradeType)
+
+  // 4) 자산 정보
+  const assetPromise = db.select().from(assets).where(eq(assets.id, assetId))
+
+  const [buyRows, cumSellRows, sellDivRows, assetRows] = await Promise.all([
+    buyRowsPromise, cumSellPromise, sellDivPromise, assetPromise,
+  ])
+
+  // ticker별 평균매수단가 맵
+  const tickerAvgPrice = new Map<string | null, number>()
   let totalBought = 0
+  let buyQuantity = 0
+  for (const row of buyRows) {
+    const qty = Number(row.totalQuantity) || 0
+    const amt = Number(row.totalAmount) || 0
+    tickerAvgPrice.set(row.ticker, qty > 0 ? amt / qty : 0)
+    totalBought += amt
+    buyQuantity += qty
+  }
+
+  const allSellQuantity = Number(cumSellRows[0]?.totalQuantity) || 0
+  const totalQuantity = buyQuantity - allSellQuantity
+  const avgBuyPrice = buyQuantity > 0 ? Math.round(totalBought / buyQuantity) : 0
+
+  // ticker별 실현손익 합산
   let totalSold = 0
   let totalDividend = 0
-  let buyQuantity = 0
-  let sellQuantity = 0
+  let realizedGain = 0
 
-  for (const row of rows) {
-    const amount = Number(row.totalAmount) || 0
+  for (const row of sellDivRows) {
     const netAmount = Number(row.totalNetAmount) || 0
     const qty = Number(row.totalQuantity) || 0
-
-    if (row.tradeType === 'buy') {
-      totalBought = amount
-      buyQuantity = qty
-    } else if (row.tradeType === 'sell') {
-      totalSold = netAmount
-      sellQuantity = qty
+    if (row.tradeType === 'sell') {
+      totalSold += netAmount
+      const avgPrice = tickerAvgPrice.get(row.ticker) ?? 0
+      realizedGain += Math.round(netAmount - (avgPrice * qty))
     } else if (row.tradeType === 'dividend') {
-      totalDividend = netAmount
+      totalDividend += netAmount
     }
   }
 
-  const totalQuantity = buyQuantity - sellQuantity
-  const avgBuyPrice = buyQuantity > 0 ? Math.round(totalBought / buyQuantity) : 0
-
-  // 자산의 현재 가치 조회
-  const assetRows = await db.select().from(assets).where(eq(assets.id, assetId))
   const asset = assetRows[0]
-  const currentValue = asset?.currentValue ?? 0
 
-  // 실현손익: 매도 수령액 - (평균매수단가 × 매도수량)
-  const realizedGain = totalSold - (avgBuyPrice * sellQuantity)
-
-  // 미실현손익: 현재가치 - (평균매수단가 × 보유수량)
-  const unrealizedGain = totalQuantity > 0
-    ? currentValue - (avgBuyPrice * totalQuantity)
-    : 0
-
-  // 총 수익률: (실현손익 + 미실현손익 + 배당금) / 총매수액 × 100
+  // 총 수익률: (실현손익 + 배당금) / 총매수액 × 100
   const totalReturn = totalBought > 0
-    ? Math.round(((realizedGain + unrealizedGain + totalDividend) / totalBought) * 10000) / 100
+    ? Math.round(((realizedGain + totalDividend) / totalBought) * 10000) / 100
     : 0
 
   return {
@@ -157,7 +197,6 @@ export async function getAssetTradeSummary(assetId: string, from?: string, to?: 
     totalQuantity,
     avgBuyPrice,
     realizedGain,
-    unrealizedGain,
     totalReturn,
   }
 }
