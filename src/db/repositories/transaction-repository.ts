@@ -270,13 +270,12 @@ function buildFilterConditions(filter?: TransactionFilter) {
     conditions.push(like(transactions.description, `%${filter.search}%`))
   }
   if (filter.tags && filter.tags.length > 0) {
-    const tagNames = filter.tags.map((t) => `'${t.replace(/'/g, "''")}'`).join(', ')
     conditions.push(
       sql`EXISTS (
         SELECT 1 FROM transaction_tags tt
         JOIN tags t ON tt.tag_id = t.id
         WHERE tt.transaction_id = ${transactions.id}
-        AND t.name IN (${sql.raw(tagNames)})
+        AND ${inArray(tags.name, filter.tags)}
       )`,
     )
   }

@@ -1,3 +1,4 @@
+import { eq } from 'drizzle-orm'
 import {
   findInvestmentReturnById,
   findInvestmentReturnsByPeriod,
@@ -10,14 +11,15 @@ import {
   findAllAssets,
   findAllInvestmentTrades,
   findInvestmentTradeById,
-  createInvestmentTrade as createInvestmentTradeRepo,
   updateInvestmentTrade as updateInvestmentTradeRepo,
-  deleteInvestmentTrade as deleteInvestmentTradeRepo,
   getAssetTradeSummary,
   updateAccountBalance,
   findAccountById,
   syncAssetFromAccount,
 } from '@/db/repositories'
+import { getDb } from '@/db'
+import { investmentTrades } from '@/db/schema'
+import { generateId } from '@/lib/utils'
 import {
   createInvestmentReturnSchema,
   updateInvestmentReturnSchema,
@@ -215,25 +217,43 @@ export async function createTradeService(
     return errorResponse('ASSET_NOT_FOUND', '자산을 찾을 수 없습니다')
   }
 
-  // 계좌 잔액 연동
   if (parsed.data.accountId) {
     const account = await findAccountById(parsed.data.accountId)
     if (!account) {
       return errorResponse('ACCOUNT_NOT_FOUND', '계좌를 찾을 수 없습니다')
     }
-
-    if (parsed.data.tradeType === 'buy') {
-      await updateAccountBalance(parsed.data.accountId, -parsed.data.totalAmount)
-    } else {
-      // sell, dividend: +netAmount
-      await updateAccountBalance(parsed.data.accountId, parsed.data.netAmount)
-    }
-
-    await syncAssetFromAccount(parsed.data.accountId)
   }
 
-  const trade = await createInvestmentTradeRepo(parsed.data)
-  return successResponse(trade)
+  const db = getDb()
+  const id = generateId()
+
+  await db.transaction(async (tx) => {
+    await tx.insert(investmentTrades).values({
+      id,
+      assetId: parsed.data.assetId,
+      tradeType: parsed.data.tradeType,
+      date: parsed.data.date,
+      ticker: parsed.data.ticker ?? null,
+      quantity: parsed.data.quantity,
+      unitPrice: parsed.data.unitPrice,
+      totalAmount: parsed.data.totalAmount,
+      fee: parsed.data.fee ?? 0,
+      tax: parsed.data.tax ?? 0,
+      netAmount: parsed.data.netAmount,
+      memo: parsed.data.memo ?? null,
+      accountId: parsed.data.accountId ?? null,
+    })
+
+    if (parsed.data.accountId) {
+      const delta = parsed.data.tradeType === 'buy'
+        ? -parsed.data.totalAmount
+        : parsed.data.netAmount
+      await updateAccountBalance(parsed.data.accountId, delta, tx)
+      await syncAssetFromAccount(parsed.data.accountId, tx)
+    }
+  })
+
+  return successResponse((await findInvestmentTradeById(id))!)
 }
 
 export async function updateTradeService(
@@ -255,22 +275,24 @@ export async function updateTradeService(
 export async function deleteTradeService(
   id: string,
 ): Promise<ApiResponse<{ deleted: true }>> {
-  const trade = await deleteInvestmentTradeRepo(id)
+  const trade = await findInvestmentTradeById(id)
   if (!trade) {
     return errorResponse('NOT_FOUND', '매매 기록을 찾을 수 없습니다')
   }
 
-  // 계좌 잔액 역방향 복원
-  if (trade.accountId) {
-    if (trade.tradeType === 'buy') {
-      await updateAccountBalance(trade.accountId, trade.totalAmount)
-    } else {
-      // sell, dividend: 원래 +했던 금액을 -
-      await updateAccountBalance(trade.accountId, -trade.netAmount)
-    }
+  const db = getDb()
 
-    await syncAssetFromAccount(trade.accountId)
-  }
+  await db.transaction(async (tx) => {
+    await tx.delete(investmentTrades).where(eq(investmentTrades.id, id))
+
+    if (trade.accountId) {
+      const delta = trade.tradeType === 'buy'
+        ? trade.totalAmount
+        : -trade.netAmount
+      await updateAccountBalance(trade.accountId, delta, tx)
+      await syncAssetFromAccount(trade.accountId, tx)
+    }
+  })
 
   return successResponse({ deleted: true })
 }
