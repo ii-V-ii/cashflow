@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useMemo } from "react";
-import { Plus, Pencil, Trash2, BarChart3, Link2, Unlink, CreditCard } from "lucide-react";
+import { Plus, Pencil, Trash2, BarChart3, Link2, Unlink, CreditCard, GripHorizontal } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -494,14 +494,13 @@ function SortableAccountCard({ id, children }: { id: string; children: React.Rea
   };
 
   return (
-    <Card
-      ref={setNodeRef}
-      style={style}
-      size="sm"
-      className="cursor-grab active:cursor-grabbing touch-none"
-      {...attributes}
-      {...listeners}
-    >
+    <Card ref={setNodeRef} style={style} size="sm" {...attributes}>
+      <div
+        className="flex justify-center py-1 cursor-grab active:cursor-grabbing touch-none"
+        {...listeners}
+      >
+        <GripHorizontal className="size-4 text-muted-foreground/50" />
+      </div>
       {children}
     </Card>
   );
