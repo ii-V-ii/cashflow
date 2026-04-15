@@ -61,6 +61,7 @@ export function TagInput({ value, onChange }: TagInputProps) {
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.nativeEvent.isComposing) return
       if (e.key === "Enter" || e.key === ",") {
         e.preventDefault()
         if (highlightIndex >= 0 && highlightIndex < filtered.length) {
