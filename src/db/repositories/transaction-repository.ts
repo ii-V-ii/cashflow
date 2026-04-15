@@ -429,20 +429,12 @@ export async function syncAssetFromAccount(accountId: string, tx?: any) {
   const { asset_id: assetId, total: cashBalance } = rows[0]
   const today = format(new Date(), 'yyyy-MM-dd')
 
-  // 2. 보유주식 매수원가 조회 (ticker별 보유수량 × 평균매수단가)
+  // 2. 보유주식 매수원가 조회 (열린 로트의 잔여수량 × 단가)
   const holdingsRows = await executor.execute(sql`
-    SELECT COALESCE(SUM(
-      CASE WHEN holding_qty > 0 THEN ROUND(buy_total::numeric / buy_qty * holding_qty) ELSE 0 END
-    ), 0)::integer AS holdings_cost
-    FROM (
-      SELECT ticker,
-        SUM(CASE WHEN trade_type = 'buy' THEN quantity ELSE 0 END) AS buy_qty,
-        SUM(CASE WHEN trade_type = 'buy' THEN total_amount ELSE 0 END) AS buy_total,
-        SUM(CASE WHEN trade_type = 'buy' THEN quantity WHEN trade_type = 'sell' THEN -quantity ELSE 0 END) AS holding_qty
-      FROM ${investmentTrades}
-      WHERE ${investmentTrades.assetId} = ${assetId}
-      GROUP BY ticker
-    ) t
+    SELECT COALESCE(SUM(unit_price * remaining_quantity), 0)::integer AS holdings_cost
+    FROM ${investmentTrades}
+    WHERE ${investmentTrades.assetId} = ${assetId}
+      AND trade_type = 'buy' AND remaining_quantity > 0
   `) as unknown as Array<{ holdings_cost: number }>
 
   const holdingsCost = holdingsRows[0]?.holdings_cost ?? 0
