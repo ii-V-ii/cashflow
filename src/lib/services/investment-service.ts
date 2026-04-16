@@ -30,7 +30,7 @@ import {
   createInvestmentTradeSchema,
   updateInvestmentTradeSchema,
 } from '@/lib/validators'
-import { successResponse, errorResponse } from '@/lib/api-response'
+import { successResponse, errorResponse, paginatedResponse } from '@/lib/api-response'
 import type { ApiResponse, InvestmentSummary, AssetReturnSummary, AssetInvestmentSummary, AnnualTradeReport, MonthlyTradeSummaryRow, TickerSummary } from '@/types'
 
 export async function getInvestmentReturnsService(params?: {
@@ -194,8 +194,10 @@ export async function getInvestmentTradesService(
   assetId?: string,
   from?: string,
   to?: string,
-): Promise<ApiResponse<Awaited<ReturnType<typeof findAllInvestmentTrades>>>> {
-  return successResponse(await findAllInvestmentTrades(assetId, from, to))
+  pagination?: { page?: number; limit?: number },
+) {
+  const result = await findAllInvestmentTrades(assetId, from, to, pagination)
+  return paginatedResponse(result.data, result)
 }
 
 export async function getInvestmentTradeByIdService(

@@ -9,8 +9,10 @@ export async function GET(request: NextRequest) {
   const assetId = searchParams.get('assetId') ?? undefined
   const from = searchParams.get('from') ?? undefined
   const to = searchParams.get('to') ?? undefined
+  const page = searchParams.get('page') ? Number(searchParams.get('page')) : undefined
+  const limit = searchParams.get('limit') ? Number(searchParams.get('limit')) : undefined
 
-  const result = await getInvestmentTradesService(assetId, from, to)
+  const result = await getInvestmentTradesService(assetId, from, to, { page, limit })
   return Response.json(result)
 }
 

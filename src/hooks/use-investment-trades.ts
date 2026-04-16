@@ -7,17 +7,28 @@ import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api-client"
 
 const TRADES_KEY = ["investment-trades"] as const
 
-export function useInvestmentTrades(assetId?: string, from?: string, to?: string) {
+interface TradeListResponse {
+  data: InvestmentTrade[]
+  meta: { total: number; page: number; limit: number; totalPages: number }
+}
+
+export function useInvestmentTrades(assetId?: string, from?: string, to?: string, page?: number, limit?: number) {
   const params = new URLSearchParams()
   if (assetId) params.set("assetId", assetId)
   if (from) params.set("from", from)
   if (to) params.set("to", to)
+  if (page) params.set("page", String(page))
+  if (limit) params.set("limit", String(limit))
   const qs = params.toString()
 
-  return useQuery({
-    queryKey: [...TRADES_KEY, assetId ?? "all", from ?? "", to ?? ""],
-    queryFn: () =>
-      apiGet<InvestmentTrade[]>(`/api/investment-trades${qs ? `?${qs}` : ""}`),
+  return useQuery<TradeListResponse>({
+    queryKey: [...TRADES_KEY, assetId ?? "all", from ?? "", to ?? "", page ?? 1, limit ?? 20],
+    queryFn: async () => {
+      const res = await fetch(`/api/investment-trades${qs ? `?${qs}` : ""}`)
+      const json = await res.json()
+      if (!json.success) throw new Error(json.error?.message ?? "매매 기록 로드 실패")
+      return { data: json.data, meta: json.meta }
+    },
   })
 }
 

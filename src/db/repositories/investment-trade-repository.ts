@@ -4,7 +4,12 @@ import { investmentTrades, assets } from '../schema'
 import { generateId } from '../../lib/utils'
 import type { CreateInvestmentTradeInput, UpdateInvestmentTradeInput } from '../../lib/validators'
 
-export async function findAllInvestmentTrades(assetId?: string, from?: string, to?: string) {
+export async function findAllInvestmentTrades(
+  assetId?: string,
+  from?: string,
+  to?: string,
+  pagination?: { page?: number; limit?: number },
+) {
   const db = getDb()
   const conditions = []
   if (assetId) conditions.push(eq(investmentTrades.assetId, assetId))
@@ -15,11 +20,27 @@ export async function findAllInvestmentTrades(assetId?: string, from?: string, t
     ? conditions.length === 1 ? conditions[0] : and(...conditions)
     : undefined
 
-  return db
-    .select()
-    .from(investmentTrades)
-    .where(where)
-    .orderBy(desc(investmentTrades.date), desc(investmentTrades.createdAt))
+  const page = pagination?.page ?? 1
+  const limit = pagination?.limit ?? 20
+  const offset = (page - 1) * limit
+
+  const [data, countRows] = await Promise.all([
+    db
+      .select()
+      .from(investmentTrades)
+      .where(where)
+      .orderBy(desc(investmentTrades.date), desc(investmentTrades.createdAt))
+      .limit(limit)
+      .offset(offset),
+    db
+      .select({ total: sql<number>`count(*)::integer`.as('total') })
+      .from(investmentTrades)
+      .where(where),
+  ])
+
+  const total = countRows[0]?.total ?? 0
+
+  return { data, total, page, limit }
 }
 
 export async function findInvestmentTradeById(id: string) {

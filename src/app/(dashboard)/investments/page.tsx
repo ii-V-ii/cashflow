@@ -55,6 +55,7 @@ const TRADE_TYPE_BADGE_VARIANT: Record<TradeType, string> = {
 export default function InvestmentsPage() {
   const [activeTab, setActiveTab] = useState("trades")
   const [filterAssetId, setFilterAssetId] = useState<string>("")
+  const [tradePage, setTradePage] = useState(1)
   const [formOpen, setFormOpen] = useState(false)
   const [editingTrade, setEditingTrade] = useState<InvestmentTrade | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<InvestmentTrade | null>(null)
@@ -70,6 +71,7 @@ export default function InvestmentsPage() {
     : `${tradeYear}-${String(tradeMonth + 1).padStart(2, "0")}-01`
 
   const handleTradePrevMonth = useCallback(() => {
+    setTradePage(1)
     setTradeMonth((m) => {
       if (m === 1) {
         setTradeYear((y) => y - 1)
@@ -80,6 +82,7 @@ export default function InvestmentsPage() {
   }, [])
 
   const handleTradeNextMonth = useCallback(() => {
+    setTradePage(1)
     setTradeMonth((m) => {
       if (m === 12) {
         setTradeYear((y) => y + 1)
@@ -91,11 +94,16 @@ export default function InvestmentsPage() {
 
   const { data: assets } = useAssets()
   const { data: accounts } = useAccounts()
-  const { data: trades, isLoading: tradesLoading } = useInvestmentTrades(
+  const TRADES_PER_PAGE = 20
+  const { data: tradesResult, isLoading: tradesLoading } = useInvestmentTrades(
     filterAssetId || undefined,
     tradeFrom,
     tradeToDate,
+    tradePage,
+    TRADES_PER_PAGE,
   )
+  const trades = tradesResult?.data
+  const tradesMeta = tradesResult?.meta
 
   const createMutation = useCreateTrade()
   const updateMutation = useUpdateTrade()
@@ -114,7 +122,6 @@ export default function InvestmentsPage() {
     return map
   }, [assets])
 
-  // DB에서 이미 날짜 역순 정렬됨
   const sortedTrades = trades ?? []
 
   const handleOpenCreate = useCallback(() => {
@@ -173,7 +180,7 @@ export default function InvestmentsPage() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <Select
               value={filterAssetId}
-              onValueChange={(v) => setFilterAssetId(v === "all" || !v ? "" : v)}
+              onValueChange={(v) => { setFilterAssetId(v === "all" || !v ? "" : v); setTradePage(1) }}
             >
               <SelectTrigger className="w-48">
                 <SelectValue placeholder="전체 자산">
@@ -290,6 +297,31 @@ export default function InvestmentsPage() {
               )}
             </CardContent>
           </Card>
+
+          {/* 페이지네이션 */}
+          {tradesMeta && tradesMeta.totalPages > 1 && (
+            <div className="flex items-center justify-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={tradePage <= 1}
+                onClick={() => setTradePage((p) => p - 1)}
+              >
+                이전
+              </Button>
+              <span className="text-sm text-muted-foreground">
+                {tradePage} / {tradesMeta.totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={tradePage >= tradesMeta.totalPages}
+                onClick={() => setTradePage((p) => p + 1)}
+              >
+                다음
+              </Button>
+            </div>
+          )}
         </TabsContent>
 
         {/* 수익 요약 탭 */}
@@ -515,7 +547,8 @@ function AssetSummaryCard({ assetId, from, to, isSelected, onSelect }: { assetId
 // 종목별 상세
 function TickerDetail({ assetId, assetName, from, to }: { assetId: string; assetName: string; from?: string; to?: string }) {
   const { data: tickerSummaries } = useTickerSummaries(assetId, from, to)
-  const { data: trades } = useInvestmentTrades(assetId, from, to)
+  const { data: tradesData } = useInvestmentTrades(assetId, from, to)
+  const trades = tradesData?.data
   const [expandedTickers, setExpandedTickers] = useState<Set<string>>(new Set())
 
   const toggleTicker = useCallback((ticker: string) => {

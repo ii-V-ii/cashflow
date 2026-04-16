@@ -187,8 +187,10 @@ describe('deleteTradeService', () => {
 })
 
 describe('getInvestmentTradesService', () => {
+  beforeEach(() => vi.clearAllMocks())
+
   it('매매 기록 목록을 반환한다', async () => {
-    mockRepos.findAllInvestmentTrades.mockResolvedValue([{ id: 'trade_1' }] as any)
+    mockRepos.findAllInvestmentTrades.mockResolvedValue({ data: [{ id: 'trade_1' }], total: 1, page: 1, limit: 20 } as any)
 
     const result = await getInvestmentTradesService()
     expect(result.success).toBe(true)
@@ -198,10 +200,10 @@ describe('getInvestmentTradesService', () => {
   })
 
   it('필터를 전달한다', async () => {
-    mockRepos.findAllInvestmentTrades.mockResolvedValue([])
+    mockRepos.findAllInvestmentTrades.mockResolvedValue({ data: [], total: 0, page: 1, limit: 20 })
 
     await getInvestmentTradesService('asset_1', '2026-04-01', '2026-05-01')
-    expect(mockRepos.findAllInvestmentTrades).toHaveBeenCalledWith('asset_1', '2026-04-01', '2026-05-01')
+    expect(mockRepos.findAllInvestmentTrades).toHaveBeenCalledWith('asset_1', '2026-04-01', '2026-05-01', undefined)
   })
 })
 
