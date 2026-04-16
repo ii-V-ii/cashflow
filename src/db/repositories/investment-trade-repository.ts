@@ -273,6 +273,12 @@ export async function getAssetTradeSummary(assetId: string, from?: string, to?: 
         ${hasPeriod ? sql`AND date >= ${from} AND date < ${to}` : sql``}
       GROUP BY ticker
     ),
+    period_buy AS (
+      SELECT COALESCE(SUM(total_amount), 0)::integer AS total
+      FROM ${investmentTrades}
+      WHERE asset_id = ${assetId} AND trade_type = 'buy'
+        ${hasPeriod ? sql`AND date >= ${from} AND date < ${to}` : sql``}
+    ),
     period_div AS (
       SELECT COALESCE(SUM(net_amount), 0)::integer AS total
       FROM ${investmentTrades}
@@ -281,6 +287,7 @@ export async function getAssetTradeSummary(assetId: string, from?: string, to?: 
     )
     SELECT
       o.total_qty, o.total_cost,
+      (SELECT total FROM period_buy) AS total_bought,
       COALESCE((SELECT SUM(net) FROM period_sell), 0)::integer AS total_sold,
       (SELECT total FROM period_div) AS total_dividend,
       COALESCE((
@@ -292,7 +299,7 @@ export async function getAssetTradeSummary(assetId: string, from?: string, to?: 
       ), 0)::integer AS realized_gain
     FROM open_lots o
   `) as unknown as Array<{
-    total_qty: number; total_cost: number
+    total_qty: number; total_cost: number; total_bought: number
     total_sold: number; total_dividend: number; realized_gain: number
   }>
 
@@ -300,11 +307,12 @@ export async function getAssetTradeSummary(assetId: string, from?: string, to?: 
 
   const r = rows[0]
   const totalQuantity = Number(r?.total_qty) || 0
-  const totalBought = Number(r?.total_cost) || 0
+  const holdingsCost = Number(r?.total_cost) || 0
+  const totalBought = Number(r?.total_bought) || 0
   const totalSold = Number(r?.total_sold) || 0
   const totalDividend = Number(r?.total_dividend) || 0
   const realizedGain = Number(r?.realized_gain) || 0
-  const avgBuyPrice = totalQuantity > 0 ? Math.round(totalBought / totalQuantity) : 0
+  const avgBuyPrice = totalQuantity > 0 ? Math.round(holdingsCost / totalQuantity) : 0
 
   const totalReturn = totalBought > 0
     ? Math.round(((realizedGain + totalDividend) / totalBought) * 10000) / 100
