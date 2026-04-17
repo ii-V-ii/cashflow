@@ -330,6 +330,7 @@ export const investmentTrades = pgTable(
     memo: text('memo'),
     accountId: text('account_id').references(() => accounts.id, { onDelete: 'set null' }),
     remainingQuantity: numeric('remaining_quantity', { precision: 12, scale: 4, mode: 'number' }).notNull().default(0),
+    realizedGain: integer('realized_gain').notNull().default(0),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
   },

@@ -123,18 +123,10 @@ export async function getTickerSummaries(assetId: string, from?: string, to?: st
       WHERE asset_id = ${assetId} AND trade_type = 'buy' AND remaining_quantity > 0
       GROUP BY ticker
     ),
-    consumed AS (
-      SELECT ticker,
-        SUM(unit_price * (quantity - remaining_quantity))::integer AS cost,
-        SUM(quantity - remaining_quantity) AS qty
-      FROM ${investmentTrades}
-      WHERE asset_id = ${assetId} AND trade_type = 'buy' AND quantity > remaining_quantity
-      GROUP BY ticker
-    ),
     period_sell AS (
       SELECT ticker,
         COALESCE(SUM(net_amount), 0)::integer AS net,
-        COALESCE(SUM(quantity), 0) AS qty
+        COALESCE(SUM(realized_gain), 0)::integer AS gain
       FROM ${investmentTrades}
       WHERE asset_id = ${assetId} AND trade_type = 'sell'
         ${hasPeriod ? sql`AND date >= ${from} AND date < ${to}` : sql``}
@@ -158,13 +150,9 @@ export async function getTickerSummaries(assetId: string, from?: string, to?: st
       COALESCE(o.total_buy_amount, 0)::integer AS total_buy_amount,
       COALESCE(ps.net, 0)::integer AS total_sell_net,
       COALESCE(pd.net, 0)::integer AS total_dividend,
-      (COALESCE(ps.net, 0) - CASE
-        WHEN c.qty > 0 THEN ROUND(c.cost::numeric / c.qty * COALESCE(ps.qty, 0))
-        ELSE 0
-      END)::integer AS realized_gain
+      COALESCE(ps.gain, 0)::integer AS realized_gain
     FROM all_tickers t
     LEFT JOIN open_lots o ON o.ticker = t.ticker
-    LEFT JOIN consumed c ON c.ticker = t.ticker
     LEFT JOIN period_sell ps ON ps.ticker = t.ticker
     LEFT JOIN period_div pd ON pd.ticker = t.ticker
     WHERE COALESCE(o.holding_qty, 0) > 0 OR COALESCE(ps.net, 0) > 0 OR COALESCE(pd.net, 0) > 0
@@ -196,37 +184,16 @@ export async function getMonthlyTradeSummary(year: number) {
   const to = `${year + 1}-01-01`
 
   const rows = await db.execute(sql`
-    WITH consumed AS (
-      SELECT ticker,
-        SUM(unit_price * (quantity - remaining_quantity))::numeric AS cost,
-        SUM(quantity - remaining_quantity) AS qty
-      FROM investment_trades
-      WHERE trade_type = 'buy' AND quantity > remaining_quantity
-      GROUP BY ticker
-    ),
-    monthly AS (
-      SELECT
-        EXTRACT(MONTH FROM date)::integer AS month,
-        trade_type, ticker,
-        COALESCE(SUM(total_amount), 0)::integer AS total_amount,
-        COALESCE(SUM(net_amount), 0)::integer AS total_net,
-        COALESCE(SUM(quantity), 0) AS total_qty
-      FROM investment_trades
-      WHERE date >= ${from} AND date < ${to}
-      GROUP BY EXTRACT(MONTH FROM date), trade_type, ticker
-    )
     SELECT
-      m.month,
-      COALESCE(SUM(CASE WHEN m.trade_type = 'buy' THEN m.total_amount END), 0)::integer AS total_bought,
-      COALESCE(SUM(CASE WHEN m.trade_type = 'sell' THEN m.total_net END), 0)::integer AS total_sold,
-      COALESCE(SUM(CASE WHEN m.trade_type = 'dividend' THEN m.total_net END), 0)::integer AS total_dividend,
-      COALESCE(SUM(CASE WHEN m.trade_type = 'sell' THEN
-        m.total_net - CASE WHEN c.qty > 0 THEN ROUND(c.cost / c.qty * m.total_qty) ELSE 0 END
-      END), 0)::integer AS realized_gain
-    FROM monthly m
-    LEFT JOIN consumed c ON c.ticker = m.ticker
-    GROUP BY m.month
-    ORDER BY m.month
+      EXTRACT(MONTH FROM date)::integer AS month,
+      COALESCE(SUM(CASE WHEN trade_type = 'buy' THEN total_amount END), 0)::integer AS total_bought,
+      COALESCE(SUM(CASE WHEN trade_type = 'sell' THEN net_amount END), 0)::integer AS total_sold,
+      COALESCE(SUM(CASE WHEN trade_type = 'dividend' THEN net_amount END), 0)::integer AS total_dividend,
+      COALESCE(SUM(CASE WHEN trade_type = 'sell' THEN realized_gain END), 0)::integer AS realized_gain
+    FROM investment_trades
+    WHERE date >= ${from} AND date < ${to}
+    GROUP BY EXTRACT(MONTH FROM date)
+    ORDER BY EXTRACT(MONTH FROM date)
   `) as unknown as Array<{
     month: number
     total_bought: number
@@ -256,22 +223,12 @@ export async function getAssetTradeSummary(assetId: string, from?: string, to?: 
       FROM ${investmentTrades}
       WHERE asset_id = ${assetId} AND trade_type = 'buy' AND remaining_quantity > 0
     ),
-    consumed AS (
-      SELECT ticker,
-        SUM(unit_price * (quantity - remaining_quantity))::integer AS cost,
-        SUM(quantity - remaining_quantity) AS qty
-      FROM ${investmentTrades}
-      WHERE asset_id = ${assetId} AND trade_type = 'buy' AND quantity > remaining_quantity
-      GROUP BY ticker
-    ),
     period_sell AS (
-      SELECT ticker,
-        COALESCE(SUM(net_amount), 0)::integer AS net,
-        COALESCE(SUM(quantity), 0) AS qty
+      SELECT
+        COALESCE(SUM(net_amount), 0)::integer AS net
       FROM ${investmentTrades}
       WHERE asset_id = ${assetId} AND trade_type = 'sell'
         ${hasPeriod ? sql`AND date >= ${from} AND date < ${to}` : sql``}
-      GROUP BY ticker
     ),
     period_buy AS (
       SELECT COALESCE(SUM(total_amount), 0)::integer AS total
@@ -284,19 +241,19 @@ export async function getAssetTradeSummary(assetId: string, from?: string, to?: 
       FROM ${investmentTrades}
       WHERE asset_id = ${assetId} AND trade_type = 'dividend'
         ${hasPeriod ? sql`AND date >= ${from} AND date < ${to}` : sql``}
+    ),
+    period_gain AS (
+      SELECT COALESCE(SUM(realized_gain), 0)::integer AS total
+      FROM ${investmentTrades}
+      WHERE asset_id = ${assetId} AND trade_type = 'sell'
+        ${hasPeriod ? sql`AND date >= ${from} AND date < ${to}` : sql``}
     )
     SELECT
       o.total_qty, o.total_cost,
       (SELECT total FROM period_buy) AS total_bought,
-      COALESCE((SELECT SUM(net) FROM period_sell), 0)::integer AS total_sold,
+      (SELECT net FROM period_sell) AS total_sold,
       (SELECT total FROM period_div) AS total_dividend,
-      COALESCE((
-        SELECT SUM(
-          ps.net - CASE WHEN c.qty > 0 THEN ROUND(c.cost::numeric / c.qty * ps.qty) ELSE 0 END
-        )
-        FROM period_sell ps
-        LEFT JOIN consumed c ON c.ticker = ps.ticker
-      ), 0)::integer AS realized_gain
+      (SELECT total FROM period_gain) AS realized_gain
     FROM open_lots o
   `) as unknown as Array<{
     total_qty: number; total_cost: number; total_bought: number
@@ -344,7 +301,7 @@ export async function matchSellToLots(
   assetId: string,
   ticker: string | null,
   sellQty: number,
-  sellUnitPrice: number,
+  sellNetAmount: number,
   tx: any,
 ): Promise<{ realizedGain: number; matchedLots: MatchedLot[] }> {
   // 열린 로트를 FIFO 순서로 조회
@@ -364,7 +321,7 @@ export async function matchSellToLots(
     .orderBy(asc(investmentTrades.date), asc(investmentTrades.createdAt))
 
   let remaining = sellQty
-  let realizedGain = 0
+  let totalCost = 0
   const matchedLots: MatchedLot[] = []
 
   for (const lot of openLots) {
@@ -374,7 +331,7 @@ export async function matchSellToLots(
     const matched = Math.min(lotRemaining, remaining)
     const costPerUnit = Number(lot.unitPrice)
 
-    realizedGain += Math.round(matched * (sellUnitPrice - costPerUnit))
+    totalCost += matched * costPerUnit
     matchedLots.push({ buyTradeId: lot.id, quantity: matched, costPerUnit })
 
     const newRemaining = lotRemaining - matched
@@ -388,6 +345,9 @@ export async function matchSellToLots(
   if (remaining > 0) {
     throw new Error('보유수량 부족: 매도 수량이 매수 잔여 수량을 초과합니다')
   }
+
+  // 실현손익 = 매도 수령액(net) - 매칭된 매수 원가
+  const realizedGain = Math.round(sellNetAmount - totalCost)
 
   return { realizedGain, matchedLots }
 }

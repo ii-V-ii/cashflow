@@ -119,7 +119,10 @@ describe('createTradeService', () => {
 
   it('매도 시 잔액을 증가시킨다', async () => {
     mockTransaction.mockImplementation(async (fn) => {
-      const tx = { insert: vi.fn().mockReturnValue({ values: vi.fn() }) }
+      const tx = {
+        insert: vi.fn().mockReturnValue({ values: vi.fn() }),
+        update: vi.fn().mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn() }) }),
+      }
       await fn(tx)
     })
 

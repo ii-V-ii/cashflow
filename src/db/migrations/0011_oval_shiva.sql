@@ -1,0 +1,1 @@
+ALTER TABLE "investment_trades" ADD COLUMN "realized_gain" integer DEFAULT 0 NOT NULL;

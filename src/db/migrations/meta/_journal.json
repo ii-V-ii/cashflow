@@ -78,6 +78,13 @@
       "when": 1776257194296,
       "tag": "0010_steady_deathstrike",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1776312616548,
+      "tag": "0011_oval_shiva",
+      "breakpoints": true
     }
   ]
 }

@@ -253,15 +253,18 @@ export async function createTradeService(
       remainingQuantity: isBuy ? parsed.data.quantity : 0,
     })
 
-    // sell → FIFO 로트 매칭
+    // sell → FIFO 로트 매칭 + 실현손익을 sell trade에 저장
     if (parsed.data.tradeType === 'sell') {
-      await matchSellToLots(
+      const { realizedGain } = await matchSellToLots(
         parsed.data.assetId,
         parsed.data.ticker ?? null,
         parsed.data.quantity,
-        parsed.data.unitPrice,
+        parsed.data.netAmount,
         tx,
       )
+      await tx.update(investmentTrades)
+        .set({ realizedGain })
+        .where(eq(investmentTrades.id, id))
     }
 
     if (parsed.data.accountId) {

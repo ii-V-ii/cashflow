@@ -50,9 +50,10 @@ describe('matchSellToLots', () => {
       }),
     }
 
-    const result = await matchSellToLots('asset1', '삼성전자', 3, 110000, mockTx)
+    // sellNetAmount = 3주 × 110000 = 330000
+    const result = await matchSellToLots('asset1', '삼성전자', 3, 330000, mockTx)
 
-    expect(result.realizedGain).toBe(30000) // 3 × (110000 - 100000)
+    expect(result.realizedGain).toBe(30000) // 330000 - (3 × 100000)
     expect(result.matchedLots).toHaveLength(1)
     expect(result.matchedLots[0].quantity).toBe(3)
     expect(mockTx.update).toHaveBeenCalledTimes(1) // buy1 remaining 10→7
@@ -75,10 +76,11 @@ describe('matchSellToLots', () => {
       }),
     }
 
-    const result = await matchSellToLots('asset1', '삼성전자', 8, 110000, mockTx)
+    // sellNetAmount = 8주 × 110000 = 880000
+    const result = await matchSellToLots('asset1', '삼성전자', 8, 880000, mockTx)
 
-    // buy1: 5주 × (110000-100000) = 50000
-    // buy2: 3주 × (110000-120000) = -30000
+    // cost = buy1: 5×100000 + buy2: 3×120000 = 860000
+    // gain = 880000 - 860000 = 20000
     expect(result.realizedGain).toBe(20000)
     expect(result.matchedLots).toHaveLength(2)
     expect(result.matchedLots[0]).toEqual({ buyTradeId: 'buy1', quantity: 5, costPerUnit: 100000 })
@@ -102,7 +104,7 @@ describe('matchSellToLots', () => {
       }),
     }
 
-    await expect(matchSellToLots('asset1', '삼성전자', 10, 110000, mockTx))
+    await expect(matchSellToLots('asset1', '삼성전자', 10, 1100000, mockTx))
       .rejects.toThrow('보유수량 부족')
   })
 })
