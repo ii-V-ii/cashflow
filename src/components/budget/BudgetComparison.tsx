@@ -14,99 +14,70 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { formatCurrency } from "@/lib/utils"
 import type { BudgetItemWithActual, CategorySubtotal } from "@/types"
 
-const COLORS = [
-  "#3b82f6", "#ef4444", "#22c55e", "#f59e0b", "#8b5cf6",
-  "#ec4899", "#06b6d4", "#84cc16", "#f97316", "#6366f1",
-  "#14b8a6", "#e11d48",
-]
 
 interface BudgetComparisonProps {
   items: readonly BudgetItemWithActual[]
   actualCategories?: readonly CategorySubtotal[]
 }
 
-interface ParentGroup {
+interface FlatRow {
   name: string
   planned: number
   actual: number
-  children: { name: string; planned: number; actual: number }[]
 }
 
 export function BudgetComparison({ items, actualCategories }: BudgetComparisonProps) {
-  const groups = useMemo(() => {
+  const rows = useMemo(() => {
     const expenseItems = items.filter(
       (item) => item.categoryType === "expense",
     )
 
-    // 대분류별 그룹핑
-    const parentMap = new Map<string, ParentGroup>()
-    const parentItems = expenseItems.filter((i) => i.categoryParentId === null)
-    const childItems = expenseItems.filter((i) => i.categoryParentId !== null)
+    const result: FlatRow[] = []
+    const budgetCategoryIds = new Set(expenseItems.map((i) => i.categoryId))
 
-    for (const item of parentItems) {
-      parentMap.set(item.categoryId, {
-        name: item.categoryName,
-        planned: item.plannedAmount,
-        actual: item.actualAmount,
-        children: [],
-      })
-    }
-
-    for (const item of childItems) {
-      const parent = parentMap.get(item.categoryParentId!)
-      if (parent) {
-        parent.children.push({
-          name: item.categoryName,
-          planned: item.plannedAmount,
-          actual: item.actualAmount,
-        })
+    // 소분류 예산 항목이 있는 경우 해당 대분류 ID 수집 (actualCategories 중복 방지)
+    const parentsOfBudgetedChildren = new Set<string>()
+    for (const item of expenseItems) {
+      if (item.categoryParentId) {
+        parentsOfBudgetedChildren.add(item.categoryParentId)
       }
     }
 
-    // 예산 없는 실적 카테고리 추가
+    // 각 예산 항목을 개별 행으로 표시 (소분류 일관 표시)
+    for (const item of expenseItems) {
+      result.push({
+        name: item.categoryName,
+        planned: item.plannedAmount,
+        actual: item.actualAmount,
+      })
+    }
+
+    // 예산 없는 실적 카테고리 추가 (중복 방지)
     if (actualCategories) {
-      const budgetCategoryIds = new Set(expenseItems.map((i) => i.categoryId))
       for (const ac of actualCategories) {
-        if (!budgetCategoryIds.has(ac.categoryId) && ac.amount > 0) {
-          parentMap.set(ac.categoryId, {
+        if (
+          !budgetCategoryIds.has(ac.categoryId) &&
+          !parentsOfBudgetedChildren.has(ac.categoryId) &&
+          ac.amount > 0
+        ) {
+          result.push({
             name: ac.categoryName,
             planned: 0,
             actual: ac.amount,
-            children: [],
           })
         }
       }
     }
 
-    return Array.from(parentMap.values())
+    return result
   }, [items, actualCategories])
 
-  // 스택형 차트 데이터: 대분류별 행, 소분류별 스택
-  const { chartData, allChildNames } = useMemo(() => {
-    const allNames = new Set<string>()
-    const data = groups.map((group) => {
-      const row: Record<string, number | string> = { name: group.name }
+  const chartData = useMemo(
+    () => rows.map((r) => ({ name: r.name, "예산": r.planned, "실적": r.actual })),
+    [rows],
+  )
 
-      if (group.children.length > 0) {
-        // 소분류가 있으면 소분류별 스택
-        for (const child of group.children) {
-          row[child.name] = child.actual
-          allNames.add(child.name)
-        }
-        row["예산"] = group.children.reduce((s, c) => s + c.planned, 0)
-      } else {
-        // 소분류 없으면 대분류 자체
-        row[group.name] = group.actual
-        allNames.add(group.name)
-        row["예산"] = group.planned
-      }
-      return row
-    })
-
-    return { chartData: data, allChildNames: Array.from(allNames) }
-  }, [groups])
-
-  if (groups.length === 0) {
+  if (rows.length === 0) {
     return (
       <Card>
         <CardHeader>
@@ -121,7 +92,7 @@ export function BudgetComparison({ items, actualCategories }: BudgetComparisonPr
     )
   }
 
-  const chartHeight = Math.max(groups.length * 70, 200)
+  const chartHeight = Math.max(rows.length * 70, 200)
 
   return (
     <Card>
@@ -159,37 +130,27 @@ export function BudgetComparison({ items, actualCategories }: BudgetComparisonPr
               radius={[0, 4, 4, 0]}
               barSize={16}
             />
-            {allChildNames.map((name, i) => (
-              <Bar
-                key={name}
-                dataKey={name}
-                stackId="actual"
-                fill={COLORS[i % COLORS.length]}
-                radius={i === allChildNames.length - 1 ? [0, 4, 4, 0] : undefined}
-                barSize={16}
-              />
-            ))}
+            <Bar
+              dataKey="실적"
+              fill="#3b82f6"
+              radius={[0, 4, 4, 0]}
+              barSize={16}
+            />
           </BarChart>
         </ResponsiveContainer>
 
         {/* 소진율 목록 */}
         <div className="space-y-1.5">
-          {groups.map((group) => {
-            const planned = group.children.length > 0
-              ? group.children.reduce((s, c) => s + c.planned, 0)
-              : group.planned
-            const actual = group.children.length > 0
-              ? group.children.reduce((s, c) => s + c.actual, 0)
-              : group.actual
-            const rate = planned > 0 ? Math.round((actual / planned) * 100) : 0
-            const over = actual > planned
+          {rows.map((row) => {
+            const rate = row.planned > 0 ? Math.round((row.actual / row.planned) * 100) : 0
+            const over = row.actual > row.planned
 
             return (
               <div
-                key={group.name}
+                key={row.name}
                 className="flex items-center justify-between text-sm"
               >
-                <span className="text-muted-foreground">{group.name}</span>
+                <span className="text-muted-foreground">{row.name}</span>
                 <span className={over ? "font-medium text-rose-600" : "font-medium text-emerald-600"}>
                   {rate}% 소진
                 </span>

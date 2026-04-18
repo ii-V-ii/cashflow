@@ -3,6 +3,7 @@ import { getDb } from '../index'
 import { budgets, budgetItems, transactions, categories } from '../schema'
 import { generateId, monthDateRange } from '../../lib/utils'
 import type { CreateBudgetInput, UpdateBudgetInput, BudgetItemInput } from '../../lib/validators'
+import type { BudgetItemWithActual } from '../../types'
 
 // === Budgets CRUD ===
 
@@ -163,7 +164,7 @@ export async function getActualsByYearMonth(year: number, month: number) {
   return rows as unknown as Array<{ category_id: string | null; type: string; total: number }>
 }
 
-export async function getBudgetItemsWithActuals(budgetId: string, year: number, month: number) {
+export async function getBudgetItemsWithActuals(budgetId: string, year: number, month: number): Promise<BudgetItemWithActual[]> {
   const db = getDb()
   const [items, actuals] = await Promise.all([
     getBudgetItems(budgetId),
@@ -180,7 +181,8 @@ export async function getBudgetItemsWithActuals(budgetId: string, year: number, 
   const categoriesData = await db.select().from(categories)
   const categoryMap = new Map(categoriesData.map((c) => [c.id, c]))
 
-  return items.map((item) => {
+  const now = new Date()
+  const result: BudgetItemWithActual[] = items.map((item) => {
     const cat = categoryMap.get(item.categoryId)
     const actualAmount = actualMap.get(item.categoryId) ?? 0
     const difference = item.plannedAmount - actualAmount
@@ -196,8 +198,61 @@ export async function getBudgetItemsWithActuals(budgetId: string, year: number, 
       actualAmount,
       difference,
       achievementRate,
-    }
+    } as BudgetItemWithActual
   })
+
+  // 예산 없이 실적만 있는 카테고리도 가상 항목으로 추가
+  const budgetedIds = new Set(items.map(i => i.categoryId))
+
+  // 소분류 예산이 있는 경우 해당 대분류 ID 수집 (롤업 중복 방지)
+  const parentsOfBudgetedChildren = new Set<string>()
+  for (const item of items) {
+    const cat = categoryMap.get(item.categoryId)
+    if (cat?.parentId) parentsOfBudgetedChildren.add(cat.parentId)
+  }
+
+  // 부모 예산 항목이 있는 경우 해당 자식 카테고리 ID 수집 (중복 방지)
+  const budgetParentIds = new Set(
+    items.filter(i => !categoryMap.get(i.categoryId)?.parentId).map(i => i.categoryId),
+  )
+
+  // 자식 카테고리가 있는 대분류 ID 수집 (롤업 항목 제외용)
+  const categoriesWithChildren = new Set(
+    categoriesData.filter(c => c.parentId !== null).map(c => c.parentId!),
+  )
+
+  const seen = new Set(budgetedIds)
+  for (const actual of actuals) {
+    if (!actual.category_id || seen.has(actual.category_id)) continue
+    if (parentsOfBudgetedChildren.has(actual.category_id)) continue
+    if (categoriesWithChildren.has(actual.category_id)) continue
+    if (actual.total <= 0) continue
+
+    const cat = categoryMap.get(actual.category_id)
+    if (!cat) continue
+
+    // 부모 예산이 있는 경우 그 자식은 건너뜀 (대분류 실적과 중복 방지)
+    if (cat.parentId && budgetParentIds.has(cat.parentId)) continue
+
+    seen.add(actual.category_id)
+    result.push({
+      id: `virtual-${actual.category_id}`,
+      budgetId,
+      categoryId: actual.category_id,
+      categoryName: cat.name,
+      categoryType: cat.type as 'income' | 'expense',
+      categoryParentId: cat.parentId ?? null,
+      plannedAmount: 0,
+      actualAmount: actual.total,
+      difference: -actual.total,
+      achievementRate: 0,
+      memo: null,
+      createdAt: now,
+      updatedAt: now,
+    })
+  }
+
+  return result
 }
 
 // === Annual Grid ===

@@ -125,11 +125,17 @@ export function TagInput({ value, onChange }: TagInputProps) {
           <input
             ref={inputRef}
             type="text"
-            className="flex-1 min-w-20 bg-transparent text-sm outline-none placeholder:text-muted-foreground py-0.5"
+            className="flex-1 min-w-0 bg-transparent text-sm outline-none placeholder:text-muted-foreground py-0.5"
             placeholder={value.length === 0 ? "태그 입력 (Enter 또는 쉼표로 추가)" : ""}
             value={input}
             onChange={(e) => {
-              setInput(e.target.value)
+              const val = e.target.value
+              if (val.endsWith(",")) {
+                addTag(val.slice(0, -1).trim())
+                setShowSuggestions(false)
+                return
+              }
+              setInput(val)
               setShowSuggestions(true)
               setHighlightIndex(-1)
             }}
