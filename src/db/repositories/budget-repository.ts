@@ -184,6 +184,7 @@ export async function getBudgetItemsWithActuals(budgetId: string, year: number, 
   const now = new Date()
   const result: BudgetItemWithActual[] = items.map((item) => {
     const cat = categoryMap.get(item.categoryId)
+    const parentCat = cat?.parentId ? categoryMap.get(cat.parentId) : null
     const actualAmount = actualMap.get(item.categoryId) ?? 0
     const difference = item.plannedAmount - actualAmount
     const achievementRate = item.plannedAmount > 0
@@ -195,6 +196,7 @@ export async function getBudgetItemsWithActuals(budgetId: string, year: number, 
       categoryName: cat?.name ?? '삭제된 카테고리',
       categoryType: (cat?.type ?? 'expense') as 'income' | 'expense',
       categoryParentId: cat?.parentId ?? null,
+      categoryParentName: parentCat?.name ?? null,
       actualAmount,
       difference,
       achievementRate,
@@ -234,6 +236,7 @@ export async function getBudgetItemsWithActuals(budgetId: string, year: number, 
     // 부모 예산이 있는 경우 그 자식은 건너뜀 (대분류 실적과 중복 방지)
     if (cat.parentId && budgetParentIds.has(cat.parentId)) continue
 
+    const parentCat = cat.parentId ? categoryMap.get(cat.parentId) : null
     seen.add(actual.category_id)
     result.push({
       id: `virtual-${actual.category_id}`,
@@ -242,6 +245,7 @@ export async function getBudgetItemsWithActuals(budgetId: string, year: number, 
       categoryName: cat.name,
       categoryType: cat.type as 'income' | 'expense',
       categoryParentId: cat.parentId ?? null,
+      categoryParentName: parentCat?.name ?? null,
       plannedAmount: 0,
       actualAmount: actual.total,
       difference: -actual.total,
