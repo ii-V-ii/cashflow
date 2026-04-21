@@ -53,5 +53,6 @@ export async function GET() {
       accountCount: accounts.length,
       recentTransactions,
     }),
+    { headers: { 'Cache-Control': 'private, max-age=30, stale-while-revalidate=60' } },
   )
 }

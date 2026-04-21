@@ -31,9 +31,13 @@ export async function GET(request: NextRequest) {
       )
     }
     const result = await getMonthlySettlement(year, month)
-    return Response.json(result)
+    return Response.json(result, {
+      headers: { 'Cache-Control': 'private, max-age=60, stale-while-revalidate=300' },
+    })
   }
 
   const result = await getAnnualSettlement(year)
-  return Response.json(result)
+  return Response.json(result, {
+    headers: { 'Cache-Control': 'private, max-age=60, stale-while-revalidate=300' },
+  })
 }

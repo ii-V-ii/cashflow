@@ -22,5 +22,7 @@ export async function GET(request: NextRequest) {
   }
 
   const result = await getAnnualBudgetSummaryService(year)
-  return Response.json(result)
+  return Response.json(result, {
+    headers: { 'Cache-Control': 'private, max-age=60, stale-while-revalidate=300' },
+  })
 }
