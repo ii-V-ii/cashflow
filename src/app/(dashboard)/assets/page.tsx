@@ -9,7 +9,12 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { AssetFormDialog } from "@/components/assets/AssetFormDialog"
-import { PortfolioDonut } from "@/components/assets/PortfolioDonut"
+import dynamic from "next/dynamic"
+
+const PortfolioDonut = dynamic(
+  () => import("@/components/assets/PortfolioDonut").then((m) => ({ default: m.PortfolioDonut })),
+  { ssr: false },
+)
 import { AssetCategoryManager } from "@/components/assets/AssetCategoryManager"
 import { DeleteConfirmDialog } from "@/components/shared/DeleteConfirmDialog"
 import {

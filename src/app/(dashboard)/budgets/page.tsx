@@ -19,7 +19,12 @@ import {
 import { useGroupedCategories } from "@/hooks/use-categories"
 import { formatCurrency } from "@/lib/utils"
 import { BudgetSummaryBar } from "@/components/budget/BudgetSummaryBar"
-import { AnnualOverview } from "@/components/budget/AnnualOverview"
+import dynamic from "next/dynamic"
+
+const AnnualOverview = dynamic(
+  () => import("@/components/budget/AnnualOverview").then((m) => ({ default: m.AnnualOverview })),
+  { ssr: false },
+)
 import { AnnualBudgetGrid } from "@/components/budget/AnnualBudgetGrid"
 import type { Category, CategoryWithChildren, BudgetWithItems } from "@/types"
 

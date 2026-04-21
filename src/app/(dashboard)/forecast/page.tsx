@@ -10,8 +10,16 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { DeleteConfirmDialog } from "@/components/shared/DeleteConfirmDialog"
 import { ScenarioDialog } from "@/components/forecast/ScenarioDialog"
-import { CashflowForecast } from "@/components/forecast/CashflowForecast"
-import { AssetForecast } from "@/components/forecast/AssetForecast"
+import dynamic from "next/dynamic"
+
+const CashflowForecast = dynamic(
+  () => import("@/components/forecast/CashflowForecast").then((m) => ({ default: m.CashflowForecast })),
+  { ssr: false },
+)
+const AssetForecast = dynamic(
+  () => import("@/components/forecast/AssetForecast").then((m) => ({ default: m.AssetForecast })),
+  { ssr: false },
+)
 import {
   useForecastScenarios,
   useForecastResult,

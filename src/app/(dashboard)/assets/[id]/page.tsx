@@ -7,7 +7,12 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import { ValuationChart } from "@/components/assets/ValuationChart"
+import dynamic from "next/dynamic"
+
+const ValuationChart = dynamic(
+  () => import("@/components/assets/ValuationChart").then((m) => ({ default: m.ValuationChart })),
+  { ssr: false },
+)
 import { ValuationForm } from "@/components/assets/ValuationForm"
 import { useAssetDetail, useCreateValuation } from "@/hooks/use-assets"
 import { useAssetCategories } from "@/hooks/use-asset-categories"

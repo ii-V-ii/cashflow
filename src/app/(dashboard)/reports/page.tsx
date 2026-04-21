@@ -10,9 +10,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { TrendChart } from "@/components/reports/TrendChart"
-import { CategoryDonut } from "@/components/reports/CategoryDonut"
-import { NetWorthChart } from "@/components/reports/NetWorthChart"
+import dynamic from "next/dynamic"
+
+const TrendChart = dynamic(
+  () => import("@/components/reports/TrendChart").then((m) => ({ default: m.TrendChart })),
+  { ssr: false },
+)
+const CategoryDonut = dynamic(
+  () => import("@/components/reports/CategoryDonut").then((m) => ({ default: m.CategoryDonut })),
+  { ssr: false },
+)
+const NetWorthChart = dynamic(
+  () => import("@/components/reports/NetWorthChart").then((m) => ({ default: m.NetWorthChart })),
+  { ssr: false },
+)
 
 const PERIOD_OPTIONS = [
   { label: "최근 6개월", value: "6" },

@@ -4,8 +4,16 @@ import { useState, useCallback } from "react"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
-import { MonthlySettlementView } from "@/components/settlements/MonthlySettlementView"
-import { AnnualSettlementView } from "@/components/settlements/AnnualSettlementView"
+import dynamic from "next/dynamic"
+
+const MonthlySettlementView = dynamic(
+  () => import("@/components/settlements/MonthlySettlementView").then((m) => ({ default: m.MonthlySettlementView })),
+  { ssr: false },
+)
+const AnnualSettlementView = dynamic(
+  () => import("@/components/settlements/AnnualSettlementView").then((m) => ({ default: m.AnnualSettlementView })),
+  { ssr: false },
+)
 
 export default function SettlementsPage() {
   const now = new Date()
