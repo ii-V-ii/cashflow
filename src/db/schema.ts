@@ -94,6 +94,8 @@ export const transactions = pgTable(
     index('idx_transactions_to_account_id').on(table.toAccountId),
     index('idx_transactions_recurring_id').on(table.recurringId),
     index('idx_transactions_status').on(table.status),
+    // 날짜 범위 + type + status 복합 필터 최적화 (결산, 보고서, 예산 실적 쿼리)
+    index('idx_transactions_date_type_status').on(table.date, table.type, table.status),
     check('chk_amount_positive', sql`${table.amount} > 0`),
   ],
 )

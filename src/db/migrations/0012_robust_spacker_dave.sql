@@ -1,0 +1,1 @@
+CREATE INDEX "idx_transactions_date_type_status" ON "transactions" USING btree ("date","type","status");
