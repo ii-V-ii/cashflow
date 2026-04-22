@@ -547,7 +547,8 @@ function AssetSummaryCard({ assetId, from, to, isSelected, onSelect }: { assetId
 // 종목별 상세
 function TickerDetail({ assetId, assetName, from, to }: { assetId: string; assetName: string; from?: string; to?: string }) {
   const { data: tickerSummaries } = useTickerSummaries(assetId, from, to)
-  const { data: tradesData } = useInvestmentTrades(assetId, from, to)
+  // 종목별 상세는 페이지네이션 없이 전체 거래 내역 표시 (limit=500)
+  const { data: tradesData } = useInvestmentTrades(assetId, from, to, 1, 500)
   const trades = tradesData?.data
   const [expandedTickers, setExpandedTickers] = useState<Set<string>>(new Set())
 
