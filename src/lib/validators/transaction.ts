@@ -14,18 +14,32 @@ const baseTransactionSchema = z.object({
   installmentCurrent: z.number().int().min(1).nullable().optional().default(null),
 })
 
-export const createTransactionSchema = baseTransactionSchema.refine(
-  (data) => {
-    if (data.type === 'transfer') {
-      return data.toAccountId != null && data.toAccountId !== data.accountId
-    }
-    return true
-  },
-  {
-    message: '이체 시 다른 도착 계좌를 지정해야 합니다',
-    path: ['toAccountId'],
-  },
-)
+export const createTransactionSchema = baseTransactionSchema
+  .refine(
+    (data) => {
+      if (data.type === 'transfer') {
+        return data.toAccountId != null && data.toAccountId !== data.accountId
+      }
+      return true
+    },
+    {
+      message: '이체 시 다른 도착 계좌를 지정해야 합니다',
+      path: ['toAccountId'],
+    },
+  )
+  .refine(
+    (data) => {
+      // 저축성 지출: expense + toAccountId가 있으면 카테고리 필수
+      if (data.type === 'expense' && data.toAccountId != null) {
+        return data.categoryId != null && data.categoryId !== ''
+      }
+      return true
+    },
+    {
+      message: '저축 거래는 카테고리를 선택해야 합니다',
+      path: ['categoryId'],
+    },
+  )
 
 export const updateTransactionSchema = baseTransactionSchema.partial().refine(
   (data) => {

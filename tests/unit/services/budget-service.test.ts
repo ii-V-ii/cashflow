@@ -213,4 +213,20 @@ describe('getAnnualBudgetSummaryService', () => {
       expect(result.data.totalActualIncome).toBe(5100000)
     }
   })
+
+  it('저축성 지출(expense)도 actualExpense에 합산된다', async () => {
+    mockRepos.findAllBudgets.mockResolvedValue([])
+    mockRepos.getMonthlyActuals.mockResolvedValue([
+      // 일반 소비 지출 + 저축성 지출 모두 'expense' type으로 들어옴
+      { month: 5, type: 'expense', total: 1500000 }, // 소비 + 저축 합산
+    ])
+
+    const result = await getAnnualBudgetSummaryService(2026)
+    expect(result.success).toBe(true)
+    if (result.success) {
+      const may = result.data.months[4]
+      expect(may.actualExpense).toBe(1500000)
+      expect(result.data.totalActualExpense).toBe(1500000)
+    }
+  })
 })

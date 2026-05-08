@@ -5,6 +5,7 @@ import {
   ArrowDownCircle,
   ArrowUpCircle,
   ArrowLeftRight,
+  PiggyBank,
   Trash2,
   Pencil,
   Repeat,
@@ -37,6 +38,7 @@ import { useTransactions, useDeleteTransaction, type TransactionRow } from "@/ho
 import { useCategories } from "@/hooks/use-categories"
 import { useAccounts } from "@/hooks/use-accounts"
 import { formatCurrency } from "@/lib/utils"
+import { getTransactionDisplayKind } from "@/lib/transaction-classification"
 import type { TransactionType } from "@/types"
 
 const TYPE_CONFIG = {
@@ -52,6 +54,13 @@ const TYPE_CONFIG = {
     icon: ArrowUpCircle,
     variant: "destructive" as const,
     className: "text-rose-600",
+  },
+  saving: {
+    label: "저축",
+    icon: PiggyBank,
+    variant: "outline" as const,
+    badgeClass: "bg-violet-100 text-violet-700 border-violet-200",
+    className: "text-violet-600",
   },
   transfer: {
     label: "이체",
@@ -286,8 +295,14 @@ export default function TransactionsPage() {
           </TableHeader>
           <TableBody>
             {transactions.map((tx) => {
-              const typeKey = tx.type as keyof typeof TYPE_CONFIG
-              const config = TYPE_CONFIG[typeKey]
+              const category = tx.categoryId
+                ? categories?.find((c) => c.id === tx.categoryId)
+                : undefined
+              const displayKind = getTransactionDisplayKind(
+                { type: tx.type, categoryId: tx.categoryId },
+                category ?? undefined,
+              )
+              const config = TYPE_CONFIG[displayKind]
               const Icon = config.icon
               return (
                 <TableRow key={tx.id}>
@@ -351,7 +366,7 @@ export default function TransactionsPage() {
                   <TableCell
                     className={`text-right font-mono font-medium ${config.className}`}
                   >
-                    {typeKey === "expense" ? "-" : ""}
+                    {displayKind === "expense" || displayKind === "saving" ? "-" : ""}
                     {formatCurrency(tx.amount)}
                   </TableCell>
                   <TableCell>

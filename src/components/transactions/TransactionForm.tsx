@@ -23,6 +23,12 @@ import { useGroupedCategories } from "@/hooks/use-categories"
 import type { Category } from "@/types"
 import { useAccounts } from "@/hooks/use-accounts"
 import { useCreateTransaction, useUpdateTransaction } from "@/hooks/use-transactions"
+import {
+  isSavingAccount,
+  isSavingCategory,
+  shouldTreatTransferAsSaving,
+} from "@/lib/transaction-classification"
+import { buildTransactionPayload } from "@/lib/transaction-form-payload"
 
 const formSchema = z.object({
   type: z.enum(["income", "expense", "transfer"]),
@@ -111,11 +117,19 @@ export function TransactionForm({ editTransaction, open: controlledOpen, onOpenC
   const currentType = form.watch("type")
   const selectedCategoryId = form.watch("categoryId")
   const selectedAccountId = form.watch("accountId")
+  const selectedToAccountId = form.watch("toAccountId")
 
   const isCardAccount = useMemo(
     () => accounts?.find((a) => a.id === selectedAccountId)?.type === "card",
     [accounts, selectedAccountId]
   )
+
+  const selectedToAccount = useMemo(
+    () => accounts?.find((a) => a.id === selectedToAccountId),
+    [accounts, selectedToAccountId]
+  )
+
+  const transferToSaving = currentType === "transfer" && shouldTreatTransferAsSaving(selectedToAccount)
 
   // 카드가 아닌 계좌로 변경 시 할부 초기화
   useEffect(() => {
@@ -139,7 +153,7 @@ export function TransactionForm({ editTransaction, open: controlledOpen, onOpenC
   }, [grouped])
 
   const selectedCategory = selectedCategoryId ? categoryMap.get(selectedCategoryId) : undefined
-  const isSavingExpense = currentType === "expense" && selectedCategory?.expenseKind === "saving"
+  const isSavingExpense = currentType === "expense" && isSavingCategory(selectedCategory)
 
   function handleTabChange(value: string) {
     form.setValue("type", value as FormValues["type"])
@@ -148,15 +162,16 @@ export function TransactionForm({ editTransaction, open: controlledOpen, onOpenC
   }
 
   async function onSubmit(values: FormValues) {
-    const payload = {
-      ...values,
-      categoryId: values.categoryId || null,
-      toAccountId: values.toAccountId || null,
-      memo: values.memo || null,
-      tags: values.tags,
-      installmentMonths: values.installmentMonths ?? null,
-      installmentCurrent: values.installmentMonths ? 1 : null,
-    }
+    const toAccount = values.toAccountId
+      ? accounts?.find((a) => a.id === values.toAccountId)
+      : undefined
+    const category = values.categoryId ? categoryMap.get(values.categoryId) : undefined
+
+    const payload = buildTransactionPayload({
+      values,
+      toAccount: toAccount ?? null,
+      category: category ?? null,
+    })
 
     if (isEdit) {
       await updateMutation.mutateAsync({ id: editTransaction.id, data: payload })
@@ -168,9 +183,17 @@ export function TransactionForm({ editTransaction, open: controlledOpen, onOpenC
     onOpenChange?.(false)
   }
 
-  const filteredGrouped = grouped?.filter(
-    (c) => c.type === (currentType === "transfer" ? "expense" : currentType),
-  )
+  const filteredGrouped = useMemo(() => {
+    if (!grouped) return undefined
+    if (currentType === "transfer" && transferToSaving) {
+      // 저축 의도 이체: 저축성 expense 카테고리만 노출
+      return grouped.filter((c) => c.type === "expense" && c.expenseKind === "saving")
+    }
+    if (currentType === "transfer") {
+      return grouped.filter((c) => c.type === "expense")
+    }
+    return grouped.filter((c) => c.type === currentType)
+  }, [grouped, currentType, transferToSaving])
 
   const isPending = createMutation.isPending || updateMutation.isPending
 
@@ -304,12 +327,17 @@ export function TransactionForm({ editTransaction, open: controlledOpen, onOpenC
                 </div>
               )}
 
-              {/* 카테고리 (수입/지출만) - 대분류/소분류 */}
-              {t !== "transfer" && (
+              {/* 카테고리 (수입/지출 또는 저축 의도 이체) - 대분류/소분류 */}
+              {(t !== "transfer" || transferToSaving) && (
                 <div>
                   <label className="text-xs font-medium text-muted-foreground">
                     카테고리
                   </label>
+                  {t === "transfer" && transferToSaving && (
+                    <p className="text-xs text-violet-600 mt-0.5 mb-1">
+                      저축 계좌로 이체 — 저축으로 분류됩니다. 카테고리를 선택하세요.
+                    </p>
+                  )}
                   <select
                     className="flex h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
                     {...form.register("categoryId")}

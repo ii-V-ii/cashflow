@@ -107,6 +107,29 @@ describe('getMonthlySettlement', () => {
     }
   })
 
+  it('저축성 지출(expense + expenseKind=saving)도 expenseByCategory에 포함된다', async () => {
+    mockExecute.mockResolvedValueOnce([
+      { category_id: 'cat_food', category_name: '식비', type: 'expense', expense_kind: 'consumption', amount: 300000 },
+      { category_id: 'cat_savings', category_name: '저축/투자', type: 'expense', expense_kind: 'saving', amount: 500000 },
+    ])
+    mockResolve.mockResolvedValueOnce([])
+    mockExecute.mockResolvedValueOnce([])
+    mockExecute.mockResolvedValueOnce([])
+    mockResolve.mockResolvedValueOnce([])
+
+    const result = await getMonthlySettlement(2026, 4)
+
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.totalExpense).toBe(800000)
+      expect(result.data.expenseByCategory).toHaveLength(2)
+      const savingRow = result.data.expenseByCategory.find((c) => c.expenseKind === 'saving')
+      expect(savingRow).toBeDefined()
+      expect(savingRow?.amount).toBe(500000)
+      expect(savingRow?.categoryName).toBe('저축/투자')
+    }
+  })
+
   it('전월 대비 데이터를 포함한다', async () => {
     // 1. getCategoryTotalsForMonth → db.execute
     mockExecute.mockResolvedValueOnce([])

@@ -89,6 +89,45 @@ describe('createTransactionSchema', () => {
     expect(result.success).toBe(false)
   })
 
+  it('지출 + 도착 계좌가 있으면 categoryId가 필수다 (저축성 지출)', () => {
+    const savingExpenseWithoutCategory = {
+      type: 'expense' as const,
+      amount: 100000,
+      description: '저축',
+      accountId: 'acc_1',
+      toAccountId: 'acc_savings',
+      date: '2026-04-01',
+    }
+    const result = createTransactionSchema.safeParse(savingExpenseWithoutCategory)
+    expect(result.success).toBe(false)
+  })
+
+  it('지출 + 도착 계좌 + categoryId가 있으면 통과한다', () => {
+    const savingExpense = {
+      type: 'expense' as const,
+      amount: 100000,
+      description: '저축',
+      categoryId: 'cat_savings',
+      accountId: 'acc_1',
+      toAccountId: 'acc_savings',
+      date: '2026-04-01',
+    }
+    const result = createTransactionSchema.safeParse(savingExpense)
+    expect(result.success).toBe(true)
+  })
+
+  it('지출이고 도착 계좌가 없으면 categoryId가 없어도 통과한다 (일반 지출)', () => {
+    const plainExpense = {
+      type: 'expense' as const,
+      amount: 15000,
+      description: '점심',
+      accountId: 'acc_1',
+      date: '2026-04-01',
+    }
+    const result = createTransactionSchema.safeParse(plainExpense)
+    expect(result.success).toBe(true)
+  })
+
   it('memo와 tags는 선택사항이다', () => {
     const result = createTransactionSchema.safeParse(validIncome)
     expect(result.success).toBe(true)
