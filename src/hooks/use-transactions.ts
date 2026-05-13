@@ -58,8 +58,26 @@ function buildSearchParams(params?: TransactionParams): string {
 
 export function useTransactions(params?: TransactionParams) {
   const qs = buildSearchParams(params)
+  const f = params?.filter
+  // Flat primitive key prevents unbounded cache growth from inline filter objects
+  // that change identity on every render.
+  const queryKey = [
+    ...TRANSACTIONS_KEY,
+    params?.page ?? 1,
+    params?.limit ?? 20,
+    f?.type ?? null,
+    f?.categoryId ?? null,
+    f?.accountId ?? null,
+    f?.dateRange?.from ?? null,
+    f?.dateRange?.to ?? null,
+    f?.search ?? null,
+    f?.tags ? [...f.tags].sort().join(",") : null,
+    f?.minAmount ?? null,
+    f?.maxAmount ?? null,
+  ] as const
+
   return useQuery<TransactionListResponse>({
-    queryKey: [...TRANSACTIONS_KEY, params ?? {}],
+    queryKey,
     queryFn: async () => {
       const res = await fetch(`/api/transactions?${qs}`)
       const json = await res.json()

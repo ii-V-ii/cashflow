@@ -37,6 +37,7 @@ import { RecurringList } from "@/components/recurring/RecurringList"
 import { useTransactions, useDeleteTransaction, type TransactionRow } from "@/hooks/use-transactions"
 import { useCategories } from "@/hooks/use-categories"
 import { useAccounts } from "@/hooks/use-accounts"
+import { useDebounce } from "@/hooks/use-debounce"
 import { formatCurrency } from "@/lib/utils"
 import { getTransactionDisplayKind } from "@/lib/transaction-classification"
 import type { TransactionType } from "@/types"
@@ -91,7 +92,11 @@ export default function TransactionsPage() {
   const nextY = month === 12 ? year + 1 : year
   const to = `${nextY}-${String(nextM).padStart(2, "0")}-01`
 
-  const parsedTags = tagFilter
+  // Debounce text inputs so each keystroke doesn't create a new query cache entry
+  const debouncedSearch = useDebounce(search, 300)
+  const debouncedTagFilter = useDebounce(tagFilter, 300)
+
+  const parsedTags = debouncedTagFilter
     .split(",")
     .map((t) => t.trim())
     .filter(Boolean)
@@ -101,7 +106,7 @@ export default function TransactionsPage() {
     ...(typeFilter && { type: typeFilter as TransactionType }),
     ...(categoryFilter && { categoryId: categoryFilter }),
     ...(accountFilter && { accountId: accountFilter }),
-    ...(search && { search }),
+    ...(debouncedSearch && { search: debouncedSearch }),
     ...(parsedTags.length > 0 && { tags: parsedTags }),
   }
 
