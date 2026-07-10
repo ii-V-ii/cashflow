@@ -94,3 +94,121 @@ export interface PageDto<T> {
   page: number
   limit: number
 }
+
+/** GET /budgets 목록 행 (API.md §6.1) — plannedTotal = 지출 계획 합(budget_totals_v.total_expense) */
+export interface BudgetSummaryItemDto {
+  id: string
+  name: string
+  year: number
+  month: number | null
+  itemCount: number
+  plannedTotal: number
+}
+
+export interface BudgetItemCategoryRef {
+  id: string
+  name: string
+  type: "income" | "expense"
+  icon: string | null
+  color: string | null
+  expenseKind: ExpenseKind | null
+  parentId: string | null
+}
+
+export interface BudgetItemDto {
+  id: string
+  categoryId: string
+  category: BudgetItemCategoryRef
+  plannedAmount: number
+  memo: string | null
+}
+
+/** 예산 쓰기 응답 (API.md §6.2/6.4/6.6) */
+export interface BudgetDto {
+  id: string
+  name: string
+  year: number
+  month: number | null
+  memo: string | null
+  items: BudgetItemDto[]
+  createdAt: string
+  updatedAt: string
+}
+
+/** GET /budgets/{id} 상세 항목 — 계획 + 실적 (API.md §6.3) */
+export type BudgetDetailItemDto = BudgetItemDto & { actualAmount: number }
+
+export interface BudgetDetailDto {
+  id: string
+  name: string
+  year: number
+  month: number | null
+  memo: string | null
+  items: BudgetDetailItemDto[]
+  plannedTotal: number
+  actualTotal: number
+}
+
+/** GET /budgets/actuals 행 (API.md §6.7) — 가상 항목(예산 없는 실적) 포함 */
+export interface BudgetActualCategoryDto {
+  categoryId: string | null
+  categoryName: string
+  type: "income" | "expense"
+  expenseKind: ExpenseKind | null
+  planned: number
+  actual: number
+  ratio: number | null
+}
+
+export interface BudgetActualsDto {
+  budgetId: string | null
+  year: number
+  month: number
+  categories: BudgetActualCategoryDto[]
+  plannedTotal: number
+  actualTotal: number
+}
+
+/** GET /budgets/annual-grid 행 (API.md §6.8) — 대분류 그룹 단위 */
+export interface AnnualGridRowDto {
+  categoryId: string
+  categoryName: string
+  type: "income" | "expense"
+  expenseKind: ExpenseKind | null
+  /** 그룹 내 개별 카테고리(소분류 포함) 월별 계획 — 인라인 편집 대상 */
+  categories: {
+    categoryId: string
+    categoryName: string
+    parentId: string | null
+    months: number[]
+    total: number
+  }[]
+  months: number[]
+  total: number
+}
+
+export interface AnnualGridDto {
+  rows: AnnualGridRowDto[]
+  monthTotals: number[]
+  grandTotal: number
+}
+
+/** PUT /budgets/annual-grid/cell 응답 (API.md §6.9) — amount 0 = 항목 삭제(itemId null) */
+export interface AnnualGridCellResultDto {
+  budgetId: string
+  itemId: string | null
+  amount: number
+}
+
+/** GET /budgets/summary 월 행 (API.md §6.10) */
+export interface BudgetSummaryMonthDto {
+  month: number
+  plannedIncome: number
+  plannedExpense: number
+  actualIncome: number
+  actualExpense: number
+}
+
+export interface BudgetYearSummaryDto {
+  months: BudgetSummaryMonthDto[]
+}

@@ -89,6 +89,10 @@ export function mapApiError(
   if (code === "CF404") {
     return { status: 404, code: "NOT_FOUND", message: "자원을 찾을 수 없습니다" }
   }
+  // CF409 = 동일 year+month 예산 중복 (409 DUPLICATE_BUDGET — API.md §16)
+  if (code === "CF409") {
+    return { status: 409, code: "DUPLICATE_BUDGET", message }
+  }
 
   // 상세는 서버 로그에만 — 응답에 노출 금지 (API.md §16 INTERNAL_ERROR)
   return { status: 500, code: "INTERNAL_ERROR", message: "서버 오류가 발생했습니다" }
