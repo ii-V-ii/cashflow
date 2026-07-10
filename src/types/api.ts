@@ -131,6 +131,8 @@ export interface BudgetDto {
   month: number | null
   memo: string | null
   items: BudgetItemDto[]
+}
+
 // ─── Phase 2C: 자산·투자 (API.md §9-11) ────────────────────
 
 export interface AssetCategoryDto {
@@ -220,6 +222,8 @@ export interface BudgetSummaryMonthDto {
 
 export interface BudgetYearSummaryDto {
   months: BudgetSummaryMonthDto[]
+}
+
 /** ── 결산 (API.md §7) ─────────────────────────────────────── */
 
 export interface SettlementCategoryDto {
