@@ -1,11 +1,13 @@
 "use client"
 
 import {
+  GemIcon,
   HomeIcon,
   LayoutGridIcon,
   PiggyBankIcon,
   PlusIcon,
   ReceiptTextIcon,
+  TrendingUpIcon,
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -81,6 +83,8 @@ export function SidebarNav() {
     ...NAV_ITEMS.slice(0, 3),
     { href: "/accounts", label: "계좌", icon: LayoutGridIcon },
     { href: "/categories", label: "카테고리", icon: LayoutGridIcon },
+    { href: "/assets", label: "자산", icon: GemIcon },
+    { href: "/investments", label: "투자", icon: TrendingUpIcon },
     NAV_ITEMS[3],
   ]
 

@@ -62,6 +62,30 @@ describe("mapApiError (API.md §16 에러 코드 일람)", () => {
     expect(mapped.code).toBe("NOT_FOUND")
   })
 
+  test("RPC 입력 검증(SQLSTATE CF400) → 400 VALIDATION_ERROR", () => {
+    const mapped = mapApiError(new RpcError("CF400", "잘못된 수량/금액 입력입니다"))
+    expect(mapped.status).toBe(400)
+    expect(mapped.code).toBe("VALIDATION_ERROR")
+  })
+
+  test("보유수량 부족(SQLSTATE CF423) → 422 INSUFFICIENT_HOLDINGS, 메시지 유지", () => {
+    const mapped = mapApiError(
+      new RpcError("CF423", "보유수량 부족: 매도 수량이 매수 잔여 수량을 초과합니다"),
+    )
+    expect(mapped.status).toBe(422)
+    expect(mapped.code).toBe("INSUFFICIENT_HOLDINGS")
+    expect(mapped.message).toContain("보유수량")
+  })
+
+  test("매칭 로트 삭제 가드(SQLSTATE CF409) → 409 TRADE_HAS_DEPENDENTS, 메시지 유지", () => {
+    const mapped = mapApiError(
+      new RpcError("CF409", "이미 일부 매도에 매칭된 매수 기록은 삭제할 수 없습니다. 매도 기록을 먼저 삭제하세요"),
+    )
+    expect(mapped.status).toBe(409)
+    expect(mapped.code).toBe("TRADE_HAS_DEPENDENTS")
+    expect(mapped.message).toContain("매도 기록")
+  })
+
   test("규약 외 P0001(메시지 substring 매칭 제거, SEC-L2)은 500으로 봉인된다", () => {
     const mapped = mapApiError(new RpcError("P0001", "저축 거래 관련 임의 메시지"))
     expect(mapped.status).toBe(500)

@@ -483,6 +483,8 @@ BEGIN
         'total_sell',      e.total_sell,
         'dividend_income', e.dividend_income,
         'realized_gain',   e.realized_gain,
+        'fee_total',       e.fee_total,
+        'tax_total',       e.tax_total,
         'return_rate',     COALESCE(e.return_rate, 0),
         'holding_qty',     e.holding_qty,
         'avg_buy_price',   e.avg_buy_price
