@@ -26,6 +26,8 @@ export default defineConfig({
   testDir: "./tests/e2e",
   fullyParallel: false, // 단일 로컬 DB 공유 — 직렬 실행
   workers: 1,
+  // dev 서버 최초 컴파일 구간에서 30초 기본값 초과로 플레이크 발생 — 여유 확보
+  timeout: 60_000,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? [["html"], ["github"]] : "list",

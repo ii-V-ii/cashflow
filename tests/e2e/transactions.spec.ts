@@ -1,30 +1,24 @@
 import { expect, test, type Page } from "@playwright/test"
 
-import { E2E_USER } from "../../playwright.config"
+import { login, readAccountBalances, resetSeedData } from "./helpers"
 
 /**
  * Phase 1b 핵심 플로우 (수용 기준):
  * 로그인 → 거래 저장 → 목록 반영 + 잔액 갱신, 저장 API 왕복 1회(네트워크 어설션),
- * 삭제 시 잔액 복원. 시드: E2E은행 100,000원 (global-setup).
+ * 삭제 시 잔액 복원. 시드: E2E은행 100,000원 (helpers.resetSeedData).
  */
 
 const EXPENSE_AMOUNT = "12000"
 
-async function login(page: Page): Promise<void> {
-  await page.goto("/")
-  await page.waitForURL("**/login")
-  await page.getByLabel("이메일").fill(E2E_USER.email)
-  await page.getByLabel("비밀번호").fill(E2E_USER.password)
-  await page.getByRole("button", { name: "로그인" }).click()
-  await page.waitForURL((url) => new URL(url).pathname === "/")
+async function bankBalanceText(page: Page): Promise<string> {
+  const balances = await readAccountBalances(page, ["E2E은행"])
+  return balances["E2E은행"]
 }
 
-async function bankBalanceText(page: Page): Promise<string> {
-  await page.goto("/accounts")
-  const balance = page.getByTestId("account-balance-E2E은행")
-  await expect(balance).toBeVisible()
-  return (await balance.textContent()) ?? ""
-}
+// 앞선 스펙 파일이 남긴 데이터와 무관하게 시드 상태에서 시작한다
+test.beforeAll(async () => {
+  await resetSeedData()
+})
 
 test.describe.serial("거래 코어 E2E", () => {
   test("미인증 접근은 /login으로, API는 401 envelope", async ({ page, request }) => {

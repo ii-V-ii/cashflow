@@ -10,6 +10,7 @@ import { useRouter } from "next/navigation"
 import { useState } from "react"
 
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser"
+import { useToastStore } from "@/stores/toast-store"
 
 const MENU_LINKS = [
   { href: "/accounts", label: "계좌", icon: LandmarkIcon, ready: true },
@@ -22,13 +23,21 @@ const UPCOMING = ["결산", "자산", "투자", "예측", "보고서", "설정"]
 export function MenuScreen() {
   const router = useRouter()
   const [isSigningOut, setIsSigningOut] = useState(false)
+  const showToast = useToastStore((state) => state.show)
 
   async function handleSignOut() {
     setIsSigningOut(true)
-    const supabase = createSupabaseBrowserClient()
-    await supabase.auth.signOut()
-    router.replace("/login")
-    router.refresh()
+    try {
+      const supabase = createSupabaseBrowserClient()
+      const { error } = await supabase.auth.signOut()
+      if (error) throw error
+      router.replace("/login")
+      router.refresh()
+    } catch {
+      // 실패 시 버튼이 "로그아웃 중…"에 머물지 않도록 복원 + 에러 토스트
+      showToast("로그아웃에 실패했습니다. 다시 시도해주세요.", "error")
+      setIsSigningOut(false)
+    }
   }
 
   return (

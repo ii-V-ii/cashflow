@@ -1,6 +1,5 @@
-import postgres from "postgres"
-
 import { E2E_USER, LOCAL_SUPABASE } from "../../playwright.config"
+import { resetSeedData } from "./helpers"
 
 /**
  * E2E 전역 셋업 — 로컬 Supabase 대상:
@@ -36,37 +35,7 @@ async function createSeedUser(): Promise<void> {
   }
 }
 
-async function seedDatabase(): Promise<void> {
-  const { hostname } = new URL(LOCAL_SUPABASE.databaseUrl)
-  if (hostname !== "127.0.0.1" && hostname !== "localhost") {
-    throw new Error(`E2E must target a local database. Got host: ${hostname}`)
-  }
-
-  const sql = postgres(LOCAL_SUPABASE.databaseUrl, { prepare: false, max: 1 })
-  try {
-    await sql`
-      TRUNCATE TABLE
-        public.transaction_tags, public.transactions,
-        public.tags, public.accounts, public.categories
-      CASCADE
-    `
-    await sql`
-      INSERT INTO public.accounts (name, type, initial_balance, sort_order) VALUES
-        ('E2E은행', 'bank', 100000, 0),
-        ('E2E적금', 'savings', 0, 1)
-    `
-    await sql`
-      INSERT INTO public.categories (name, type, expense_kind, sort_order) VALUES
-        ('식비', 'expense', 'consumption', 0),
-        ('저축', 'expense', 'saving', 1),
-        ('급여', 'income', NULL, 0)
-    `
-  } finally {
-    await sql.end()
-  }
-}
-
 export default async function globalSetup(): Promise<void> {
   await createSeedUser()
-  await seedDatabase()
+  await resetSeedData()
 }
