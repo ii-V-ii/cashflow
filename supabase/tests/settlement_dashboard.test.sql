@@ -5,7 +5,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(32);
+select plan(47);
 
 -- ── 함수 시그니처 ────────────────────────────────────────────
 select has_function('public', 'get_monthly_settlement', array['integer', 'integer']);
@@ -163,15 +163,112 @@ select ok(
     select 1 from jsonb_array_elements(public.get_dashboard(2026, 7)->'calendar') elem
     where elem->>'date' = '2026-07-20'),
   'dashboard: pending date absent from calendar');
--- 타 트랙 뷰 의존 섹션은 null placeholder
+-- 빈 상태(자산 없음·해당 월 예산 없음) → null (UI 빈 상태 표시)
 select is(public.get_dashboard(2026, 7)->'investment', 'null'::jsonb,
-  'dashboard: investment is null placeholder until 2C lands');
+  'dashboard: investment is null when no assets exist');
 select is(public.get_dashboard(2026, 7)->'budget_usage', 'null'::jsonb,
-  'dashboard: budget_usage is null placeholder until 2A lands');
+  'dashboard: budget_usage is null when no budget for the month');
 -- 최근 거래 5건 제한 (총 applied 6 + pending 1 = 7건 중 5건)
 select is(
   jsonb_array_length(public.get_dashboard(2026, 7)->'recent_transactions'), 5,
   'dashboard: recent_transactions capped at 5');
+
+-- ══ Phase 2 통합 — category_rollup_v + get_dashboard 확장 ══════
+
+-- ── category_rollup_v: 대분류 롤업 공용 뷰 ───────────────────
+select has_view('public', 'category_rollup_v', 'category_rollup_v exists');
+-- 외식(소분류) 20,000 이 식비(대분류)로 롤업되어 7월 식비 = 50,000 (applied만)
+select is(
+  (select sum(amount)::bigint from public.category_rollup_v
+    where category_name = '식비' and status = 'applied'
+      and date >= '2026-07-01' and date < '2026-08-01'), 50000::bigint,
+  'category_rollup_v: child rolls up to parent, applied filterable');
+
+-- ── 통합 시드: 예산(2026-07) + 자산·매매 ─────────────────────
+insert into public.budgets (id, name, year, month) values
+  ('00000000-0000-4000-8000-000000000201', '2026년 7월 예산', 2026, 7);
+insert into public.budget_items (budget_id, category_id, planned_amount) values
+  -- 식비 200,000 + 저축 100,000 → budget_totals_v.total_expense = 300,000
+  ('00000000-0000-4000-8000-000000000201', '00000000-0000-4000-8000-000000000102', 200000),
+  ('00000000-0000-4000-8000-000000000201', '00000000-0000-4000-8000-000000000103', 100000);
+
+insert into public.asset_categories (id, name, kind) values
+  ('00000000-0000-4000-8000-000000000301', '금융자산', 'financial');
+insert into public.assets (id, name, asset_category_id, acquisition_date, acquisition_cost) values
+  -- 펀드: 연동 계좌·로트 없음 → 최신 평가액 1,200,000
+  ('00000000-0000-4000-8000-000000000302', '펀드',
+   '00000000-0000-4000-8000-000000000301', '2026-01-01', 1000000),
+  -- 연금: 계좌 연동 → 계좌 잔액 500,000 이 자산 가치
+  ('00000000-0000-4000-8000-000000000303', '연금',
+   '00000000-0000-4000-8000-000000000301', '2026-01-01', 400000);
+insert into public.asset_valuations (asset_id, date, value) values
+  ('00000000-0000-4000-8000-000000000302', '2026-07-01', 1200000);
+insert into public.accounts (id, name, type, initial_balance, sort_order, asset_id) values
+  ('00000000-0000-4000-8000-000000000003', '연금계좌', 'investment', 500000, 2,
+   '00000000-0000-4000-8000-000000000303');
+insert into public.investment_trades
+  (asset_id, trade_type, date, quantity, unit_price, total_amount, fee, tax,
+   net_amount, realized_gain) values
+  -- 7월: 매수 500,000 / 매도 net 297,000(실현손익 47,000) / 배당 10,000
+  ('00000000-0000-4000-8000-000000000302', 'buy',      '2026-07-02', 10, 50000, 500000, 0, 0, 500000, 0),
+  ('00000000-0000-4000-8000-000000000302', 'sell',     '2026-07-15',  5, 60000, 300000, 3000, 0, 297000, 47000),
+  ('00000000-0000-4000-8000-000000000302', 'dividend', '2026-07-20',  1, 10000,  10000, 0, 0,  10000, 0);
+
+-- ── budget_usage: 지출 계획 대비 실적 소진율 ─────────────────
+select is(
+  (public.get_dashboard(2026, 7)->'budget_usage'->>'plannedTotal')::bigint, 300000::bigint,
+  'dashboard: budget_usage.plannedTotal = budget_totals_v.total_expense');
+select is(
+  (public.get_dashboard(2026, 7)->'budget_usage'->>'actualTotal')::bigint, 150000::bigint,
+  'dashboard: budget_usage.actualTotal = applied month expense (saving included)');
+select is(
+  (public.get_dashboard(2026, 7)->'budget_usage'->>'ratio')::numeric, 50.0::numeric,
+  'dashboard: budget_usage.ratio = actual / planned * 100');
+
+-- ── investment: 해당 월 매매 요약 + 보유 평가 ────────────────
+select is(
+  (public.get_dashboard(2026, 7)->'investment'->>'invested')::bigint, 500000::bigint,
+  'dashboard: investment.invested = month buy total');
+select is(
+  (public.get_dashboard(2026, 7)->'investment'->>'sold')::bigint, 297000::bigint,
+  'dashboard: investment.sold = month sell net');
+select is(
+  (public.get_dashboard(2026, 7)->'investment'->>'dividend')::bigint, 10000::bigint,
+  'dashboard: investment.dividend = month dividend net');
+select is(
+  (public.get_dashboard(2026, 7)->'investment'->>'realizedGain')::bigint, 47000::bigint,
+  'dashboard: investment.realizedGain = month realized gain');
+-- totalValue = 펀드 1,200,000(최신 평가) + 연금 500,000(연동 계좌)
+select is(
+  (public.get_dashboard(2026, 7)->'investment'->>'totalValue')::bigint, 1700000::bigint,
+  'dashboard: investment.totalValue = sum of active asset values');
+
+-- ── net_worth: 자산 합계 + 자산 미연동 계좌 잔액 (이중 계상 방지) ──
+-- 은행 700,000 + 적금 100,000 (미연동) + 자산 1,700,000 = 2,500,000
+select is(
+  (public.get_dashboard(2026, 7)->>'net_worth')::bigint, 2500000::bigint,
+  'dashboard: net_worth = unlinked account balances + asset values');
+-- total_balance 는 연동 계좌 포함 전체 활성 계좌: 800,000 + 500,000
+select is(
+  (public.get_dashboard(2026, 7)->>'total_balance')::bigint, 1300000::bigint,
+  'dashboard: total_balance still includes asset-linked accounts');
+
+-- ── 에지: 지출 계획 0 → ratio null (get_budget_actuals 규약) ──
+-- 예산 항목을 전부 삭제해 계획 0 으로 만든다 (예산 행은 존재 → budget_usage 는 non-null)
+delete from public.budget_items
+ where budget_id = '00000000-0000-4000-8000-000000000201';
+select is(
+  public.get_dashboard(2026, 7)->'budget_usage'->'ratio', 'null'::jsonb,
+  'dashboard: budget_usage.ratio is null when planned total is 0');
+select is(
+  (public.get_dashboard(2026, 7)->'budget_usage'->>'actualTotal')::bigint, 150000::bigint,
+  'dashboard: budget_usage.actualTotal remains real spending when planned is 0');
+
+-- ── 에지: 전부 비활성 자산 → investment null (활성 기준 일치) ──
+update public.assets set is_active = false;
+select is(
+  public.get_dashboard(2026, 7)->'investment', 'null'::jsonb,
+  'dashboard: investment is null when all assets are inactive');
 
 select * from finish();
 rollback;

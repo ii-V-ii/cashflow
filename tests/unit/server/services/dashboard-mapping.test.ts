@@ -39,10 +39,37 @@ describe("mapDashboard", () => {
     })
   })
 
-  test("예산·투자 placeholder는 null로 유지된다 (Phase 2 통합에서 확장)", () => {
+  test("빈 상태(자산·예산 없음)의 null은 그대로 통과된다", () => {
     const dto = mapDashboard(RAW)
     expect(dto.investment).toBeNull()
     expect(dto.budget).toBeNull()
+  })
+
+  test("예산·투자 실값(Phase 2 통합 확장)은 그대로 통과된다", () => {
+    const dto = mapDashboard({
+      ...RAW,
+      investment: {
+        totalValue: 1_700_000,
+        invested: 500_000,
+        sold: 297_000,
+        dividend: 10_000,
+        realizedGain: 47_000,
+      },
+      budget_usage: { plannedTotal: 300_000, actualTotal: 150_000, ratio: 50 },
+    })
+
+    expect(dto.investment).toEqual({
+      totalValue: 1_700_000,
+      invested: 500_000,
+      sold: 297_000,
+      dividend: 10_000,
+      realizedGain: 47_000,
+    })
+    expect(dto.budget).toEqual({
+      plannedTotal: 300_000,
+      actualTotal: 150_000,
+      ratio: 50,
+    })
   })
 
   test("빈 상태 — null 배열·null 합계를 0/빈 배열로 정규화한다", () => {

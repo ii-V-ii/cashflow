@@ -21,7 +21,8 @@ import type {
 
 /**
  * 보고서 집계 (API.md §14) — 전부 읽기 전용 SELECT 각 1왕복.
- * 대분류 롤업·저축 구분은 결산(get_monthly_settlement)과 동일 규칙.
+ * 대분류 롤업·저축 구분은 category_rollup_v 공용 뷰로 결산과 동일 규칙 공유
+ * (Phase 2 통합 — 마이그레이션 20260716000010).
  */
 
 /** GET /reports/trend — 월별 수입/지출/저축 추이, 빈 달 0 채움 (API.md §14.1) */
@@ -35,18 +36,15 @@ export async function getTrendReport(
 
   const sql = getDb()
   const rows = await sql`
-    SELECT to_char(t.date, 'YYYY-MM') AS ym,
-           COALESCE(SUM(t.amount) FILTER (WHERE t.type = 'income'), 0)::float8  AS income,
-           COALESCE(SUM(t.amount) FILTER (WHERE t.type = 'expense'), 0)::float8 AS expense,
-           COALESCE(SUM(t.amount) FILTER (
-             WHERE t.type = 'expense'
-               AND COALESCE(pc.expense_kind, c.expense_kind) = 'saving'), 0)::float8 AS saving
-    FROM transactions t
-    LEFT JOIN categories c  ON c.id = t.category_id
-    LEFT JOIN categories pc ON pc.id = c.parent_id
-    WHERE t.date >= ${start} AND t.date < ${endExclusive}
-      AND t.type IN ('income', 'expense')
-      AND t.status = 'applied'
+    SELECT to_char(r.date, 'YYYY-MM') AS ym,
+           COALESCE(SUM(r.amount) FILTER (WHERE r.type = 'income'), 0)::float8  AS income,
+           COALESCE(SUM(r.amount) FILTER (WHERE r.type = 'expense'), 0)::float8 AS expense,
+           COALESCE(SUM(r.amount) FILTER (
+             WHERE r.type = 'expense' AND r.expense_kind = 'saving'), 0)::float8 AS saving
+    FROM category_rollup_v r
+    WHERE r.date >= ${start} AND r.date < ${endExclusive}
+      AND r.type IN ('income', 'expense')
+      AND r.status = 'applied'
     GROUP BY 1
   `
 
@@ -61,17 +59,15 @@ export async function getCategoryReport(
 ): Promise<CategoryReportDto> {
   const sql = getDb()
   const rows = await sql`
-    SELECT COALESCE(c.parent_id, c.id)               AS category_id,
-           COALESCE(pc.name, c.name, '미분류')        AS name,
-           COALESCE(pc.color, c.color)               AS color,
-           SUM(t.amount)::float8                     AS amount
-    FROM transactions t
-    LEFT JOIN categories c  ON c.id = t.category_id
-    LEFT JOIN categories pc ON pc.id = c.parent_id
-    WHERE t.date >= make_date(${query.year}, ${query.month}, 1)
-      AND t.date < make_date(${query.year}, ${query.month}, 1) + interval '1 month'
-      AND t.type = 'expense'
-      AND t.status = 'applied'
+    SELECT r.category_id,
+           r.category_name          AS name,
+           r.color,
+           SUM(r.amount)::float8    AS amount
+    FROM category_rollup_v r
+    WHERE r.date >= make_date(${query.year}, ${query.month}, 1)
+      AND r.date < make_date(${query.year}, ${query.month}, 1) + interval '1 month'
+      AND r.type = 'expense'
+      AND r.status = 'applied'
     GROUP BY 1, 2, 3
     ORDER BY amount DESC, name
   `

@@ -1,13 +1,17 @@
-import type { DailyTotalDto, DashboardDto, TransactionDto } from "@/types/api"
+import type {
+  DailyTotalDto,
+  DashboardBudgetUsageDto,
+  DashboardDto,
+  DashboardInvestmentDto,
+  TransactionDto,
+} from "@/types/api"
 
 /**
  * get_dashboard RPC(DB.md §3.9) 원형 → API.md §8.1 DTO 매핑.
  * 순수 함수 — DB 접근 없음 (단위 테스트 대상).
  *
- * investment/budget_usage는 예산·투자 트랙의 뷰(budget_totals_v,
- * monthly_investment_summary_v)가 랜딩되기 전까지 RPC가 null placeholder를
- * 반환한다 — Phase 2 통합에서 RPC를 CREATE OR REPLACE로 확장하면
- * 이 매핑은 그대로 실값을 통과시킨다.
+ * investment/budget_usage 는 RPC 가 camelCase jsonb 로 조립해 돌려주며
+ * 빈 상태(자산 없음·해당 월 예산 없음)면 null — 매핑은 그대로 통과시킨다.
  */
 
 export interface RawDashboard {
@@ -16,8 +20,8 @@ export interface RawDashboard {
   net_worth: number | null
   month_income: number | null
   month_expense: number | null
-  investment: { totalValue: number; totalGain: number; gainRate: number } | null
-  budget_usage: { plannedTotal: number; actualTotal: number; ratio: number } | null
+  investment: DashboardInvestmentDto | null
+  budget_usage: DashboardBudgetUsageDto | null
   calendar: DailyTotalDto[] | null
   recent_transactions: TransactionDto[] | null
 }

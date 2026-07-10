@@ -320,17 +320,35 @@ export interface DailyTotalDto {
   expense: number
 }
 
+/** 해당 월 매수/매도/배당/실현손익 + 활성 자산 평가액 합 (DB.md §3.9) */
+export interface DashboardInvestmentDto {
+  totalValue: number
+  invested: number
+  sold: number
+  dividend: number
+  realizedGain: number
+}
+
+/** 해당 월 지출 계획(budget_totals_v.total_expense) 대비 실지출 소진율 */
+export interface DashboardBudgetUsageDto {
+  plannedTotal: number
+  actualTotal: number
+  /** actual/planned×100 (소수 1자리) — 계획 0이면 null (get_budget_actuals 규약) */
+  ratio: number | null
+}
+
 export interface DashboardDto {
+  /** 자산 미연동 활성 계좌 잔액 + 활성 자산 평가액 합 */
   netWorth: number
   totalBalance: number
   accountCount: number
-  /** 투자 트랙(monthly_investment_summary_v) 랜딩 전까지 null placeholder */
-  investment: { totalValue: number; totalGain: number; gainRate: number } | null
+  /** 활성 자산이 하나도 없으면 null (빈 상태 표시) */
+  investment: DashboardInvestmentDto | null
   monthlyIncome: number
   monthlyExpense: number
   dailyTotals: DailyTotalDto[]
-  /** 예산 트랙(budget_totals_v) 랜딩 전까지 null placeholder */
-  budget: { plannedTotal: number; actualTotal: number; ratio: number } | null
+  /** 해당 월 예산이 없으면 null (빈 상태 표시) */
+  budget: DashboardBudgetUsageDto | null
   recentTransactions: TransactionDto[]
 }
 
