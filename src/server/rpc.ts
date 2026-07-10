@@ -27,6 +27,12 @@ export const ALLOWED_RPC_FUNCTIONS = [
   "create_transaction",
   "update_transaction",
   "delete_transaction",
+  // Phase 2A 예산 트랙 (구현됨 — 20260711000001_phase2a_budgets.sql)
+  "create_budget",
+  "update_budget",
+  "copy_budget",
+  "upsert_budget_cell",
+  "get_budget_summary",
   // 이후 트랙 (docs/DB.md §3 — 마이그레이션 미랜딩)
   "create_investment_trade",
   "delete_investment_trade",

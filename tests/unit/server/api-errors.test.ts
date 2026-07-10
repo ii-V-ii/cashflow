@@ -62,6 +62,15 @@ describe("mapApiError (API.md §16 에러 코드 일람)", () => {
     expect(mapped.code).toBe("NOT_FOUND")
   })
 
+  test("예산 중복 RPC(SQLSTATE CF409) → 409 DUPLICATE_BUDGET, 메시지 유지", () => {
+    const mapped = mapApiError(
+      new RpcError("CF409", "2026년 7월 예산이 이미 존재합니다"),
+    )
+    expect(mapped.status).toBe(409)
+    expect(mapped.code).toBe("DUPLICATE_BUDGET")
+    expect(mapped.message).toContain("이미 존재")
+  })
+
   test("규약 외 P0001(메시지 substring 매칭 제거, SEC-L2)은 500으로 봉인된다", () => {
     const mapped = mapApiError(new RpcError("P0001", "저축 거래 관련 임의 메시지"))
     expect(mapped.status).toBe(500)

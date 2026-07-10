@@ -117,4 +117,14 @@ describe("callRpc", () => {
     expect(ALLOWED_RPC_FUNCTIONS).toContain("update_transaction")
     expect(ALLOWED_RPC_FUNCTIONS).toContain("delete_transaction")
   })
+
+  test("whitelist covers the budget RPCs (Phase 2A, API.md §6)", () => {
+    expect(ALLOWED_RPC_FUNCTIONS).toContain("create_budget")
+    expect(ALLOWED_RPC_FUNCTIONS).toContain("update_budget")
+    expect(ALLOWED_RPC_FUNCTIONS).toContain("copy_budget")
+    expect(ALLOWED_RPC_FUNCTIONS).toContain("upsert_budget_cell")
+    expect(ALLOWED_RPC_FUNCTIONS).toContain("get_budget_actuals")
+    expect(ALLOWED_RPC_FUNCTIONS).toContain("get_annual_grid")
+    expect(ALLOWED_RPC_FUNCTIONS).toContain("get_budget_summary")
+  })
 })
