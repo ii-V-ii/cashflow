@@ -21,6 +21,8 @@ export async function resetSeedData(): Promise<void> {
         public.transaction_tags, public.transactions,
         public.recurring_transactions,
         public.tags, public.accounts, public.categories
+        public.tags, public.accounts, public.categories,
+        public.forecast_results, public.forecast_scenarios
       CASCADE
     `
     await sql`

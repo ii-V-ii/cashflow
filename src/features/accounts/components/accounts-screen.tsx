@@ -12,6 +12,7 @@ import {
   useAccounts,
   useReorderAccounts,
 } from "@/features/accounts/hooks/use-accounts"
+import { getSavingsMaturityInfo } from "@/lib/calculations/deposit-maturity"
 import { formatKrw } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { useToastStore } from "@/stores/toast-store"
@@ -23,6 +24,32 @@ const ACCOUNT_TYPE_LABELS: Record<AccountDto["type"], string> = {
   card: "카드",
   savings: "적금",
   investment: "투자",
+}
+
+function todayYmd(): string {
+  const now = new Date()
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`
+}
+
+/** 적금 만기 D-day 배지 + 예상 이자 — 정보 없으면 렌더링하지 않음 (PRD §3.9) */
+function SavingsMaturityBadge({ account }: { account: AccountDto }) {
+  if (account.type !== "savings") return null
+  const info = getSavingsMaturityInfo(account, todayYmd())
+  if (!info) return null
+
+  return (
+    <span className="flex items-center gap-1.5 text-[11px] text-ink-muted">
+      <span
+        data-testid={`maturity-badge-${account.name}`}
+        className="rounded-md bg-surface-sunken px-1.5 py-0.5 font-medium"
+      >
+        {info.dDay >= 0 ? `D-${info.dDay}` : "만기"} · {info.maturityDate}
+      </span>
+      <span data-testid={`maturity-interest-${account.name}`}>
+        예상 이자 {formatKrw(info.expectedInterest)}
+      </span>
+    </span>
+  )
 }
 
 interface AccountFormState {
@@ -148,6 +175,7 @@ export function AccountsScreen() {
                 >
                   {formatKrw(account.balance)}
                 </span>
+                <SavingsMaturityBadge account={account} />
               </button>
               <div className="flex flex-col">
                 <button

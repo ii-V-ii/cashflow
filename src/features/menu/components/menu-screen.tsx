@@ -23,9 +23,10 @@ const MENU_LINKS = [
   { href: "/categories", label: "카테고리", icon: FolderTreeIcon, ready: true },
   { href: "/assets", label: "자산", icon: GemIcon, ready: true },
   { href: "/investments", label: "투자", icon: TrendingUpIcon, ready: true },
+  { href: "/forecast", label: "예측", icon: TrendingUpIcon, ready: true },
 ] as const
 
-const UPCOMING = ["예측", "설정"] as const
+const UPCOMING = ["설정"] as const
 
 /** 전체 메뉴 그리드 시트 — 저빈도 메뉴 격리 (UI.md §4.1) + 로그아웃 */
 export function MenuScreen() {

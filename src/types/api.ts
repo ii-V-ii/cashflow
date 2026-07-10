@@ -2,6 +2,7 @@ import type {
   AccountType,
   ExpenseKind,
   RecurringFrequency,
+  ForecastAssumptions,
   TransactionStatus,
   TransactionType,
 } from "@/types"
@@ -495,4 +496,39 @@ export interface AnnualMonthDto {
 export interface AnnualSummaryDto {
   months: AnnualMonthDto[]
   total: Omit<AnnualMonthDto, "month">
+}
+
+/** 예측 시나리오 (API.md §13.1) */
+export interface ForecastScenarioDto {
+  id: string
+  name: string
+  description: string | null
+  assumptions: ForecastAssumptions | null
+  startDate: string
+  endDate: string
+}
+
+/** PATCH 응답 — 수정 시 기존 결과 무효 플래그 (API.md §13.4) */
+export type UpdatedForecastScenarioDto = ForecastScenarioDto & {
+  staleResults: true
+}
+
+/**
+ * 예측 결과 1개월 (API.md §13.6).
+ * projectedCashflow = 누적 현금(DB projected_balance).
+ * goalProgress: 목표 금액은 서버에 저장하지 않으므로 항상 null —
+ * UI가 입력값과 findGoalReachYm으로 클라이언트에서 계산한다 (PRD §3.9).
+ */
+export interface ForecastResultDto {
+  ym: string
+  projectedIncome: number
+  projectedExpense: number
+  projectedCashflow: number
+  projectedNetWorth: number
+  goalProgress: number | null
+}
+
+export interface RunForecastResponseDto {
+  scenarioId: string
+  results: ForecastResultDto[]
 }
