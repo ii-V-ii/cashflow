@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import "@testing-library/jest-dom/vitest"
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -66,5 +67,14 @@ describe("MenuScreen 로그아웃", () => {
     expect(replaceMock).not.toHaveBeenCalled()
     expect(button).toHaveProperty("disabled", false)
     expect(button.textContent).not.toContain("로그아웃 중")
+  })
+})
+
+describe("MenuScreen 메뉴 링크", () => {
+  it("예측 메뉴가 /forecast로 연결된다 (Phase 2E)", () => {
+    render(<MenuScreen />)
+
+    const link = screen.getByRole("link", { name: /예측/ })
+    expect(link).toHaveAttribute("href", "/forecast")
   })
 })
