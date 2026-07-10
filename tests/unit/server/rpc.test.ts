@@ -1,15 +1,17 @@
 import { beforeEach, describe, expect, test, vi } from "vitest"
 
 const unsafeMock = vi.fn()
+const jsonMock = vi.fn((value: unknown) => ({ __jsonParam: value }))
 
 vi.mock("@/server/db/client", () => ({
-  getDb: () => ({ unsafe: unsafeMock }),
+  getDb: () => ({ unsafe: unsafeMock, json: jsonMock }),
 }))
 
-import { callRpc, RpcError } from "@/server/rpc"
+import { ALLOWED_RPC_FUNCTIONS, callRpc, RpcError } from "@/server/rpc"
 
 beforeEach(() => {
   unsafeMock.mockReset()
+  jsonMock.mockClear()
 })
 
 describe("callRpc", () => {
@@ -20,17 +22,38 @@ describe("callRpc", () => {
     // Act
     const result = await callRpc<{ id: string; amount: number }>(
       "create_transaction",
-      { p_payload: { amount: 1000 } },
+      { p: { amount: 1000 } },
     )
 
     // Assert
     expect(result).toEqual({ id: "tx-1", amount: 1000 })
     expect(unsafeMock).toHaveBeenCalledTimes(1)
     const [query, values] = unsafeMock.mock.calls[0]
-    expect(query).toBe(
-      'select public."create_transaction"(p_payload => $1) as result',
-    )
-    expect(values).toEqual([JSON.stringify({ amount: 1000 })])
+    expect(query).toBe('select public."create_transaction"(p => $1) as result')
+    // 객체/배열 파라미터는 JSON.stringify 문자열이 아니라 postgres.js json 파라미터로
+    // 전달해야 한다 — 문자열로 보내면 jsonb 문자열 스칼라로 파싱되는 회귀 방지.
+    expect(values).toEqual([{ __jsonParam: { amount: 1000 } }])
+    expect(jsonMock).toHaveBeenCalledWith({ amount: 1000 })
+  })
+
+  test("passes scalar parameters through without json wrapping", async () => {
+    unsafeMock.mockResolvedValueOnce([{ result: true }])
+
+    await callRpc<boolean>("delete_transaction", { p_id: "uuid-1" })
+
+    const [query, values] = unsafeMock.mock.calls[0]
+    expect(query).toBe('select public."delete_transaction"(p_id => $1) as result')
+    expect(values).toEqual(["uuid-1"])
+    expect(jsonMock).not.toHaveBeenCalled()
+  })
+
+  test("wraps array parameters as json parameters", async () => {
+    unsafeMock.mockResolvedValueOnce([{ result: null }])
+
+    await callRpc("update_transaction", { p_id: "uuid-1", p: { tags: ["a"] } })
+
+    const [, values] = unsafeMock.mock.calls[0]
+    expect(values).toEqual(["uuid-1", { __jsonParam: { tags: ["a"] } }])
   })
 
   test("calls a zero-argument function without parameters", async () => {
@@ -50,7 +73,7 @@ describe("callRpc", () => {
     })
     unsafeMock.mockRejectedValueOnce(pgError)
 
-    const promise = callRpc("create_investment_trade", { p_payload: {} })
+    const promise = callRpc("create_investment_trade", { p: {} })
 
     await expect(promise).rejects.toBeInstanceOf(RpcError)
     await expect(promise).rejects.toMatchObject({
@@ -70,7 +93,7 @@ describe("callRpc", () => {
 
   test("rejects invalid parameter names without touching the database", async () => {
     await expect(
-      callRpc("create_transaction", { "p_payload) --": 1 }),
+      callRpc("create_transaction", { "p) --": 1 }),
     ).rejects.toMatchObject({ code: "INVALID_RPC_PARAM" })
     expect(unsafeMock).not.toHaveBeenCalled()
   })
@@ -80,5 +103,18 @@ describe("callRpc", () => {
       callRpc("create_transaction; drop table transactions"),
     ).rejects.toMatchObject({ code: "INVALID_RPC_NAME" })
     expect(unsafeMock).not.toHaveBeenCalled()
+  })
+
+  test("rejects well-formed but non-whitelisted function names", async () => {
+    await expect(callRpc("pg_sleep")).rejects.toMatchObject({
+      code: "UNKNOWN_RPC_FUNCTION",
+    })
+    expect(unsafeMock).not.toHaveBeenCalled()
+  })
+
+  test("whitelist covers the transaction RPCs (DB.md §5 GRANT list)", () => {
+    expect(ALLOWED_RPC_FUNCTIONS).toContain("create_transaction")
+    expect(ALLOWED_RPC_FUNCTIONS).toContain("update_transaction")
+    expect(ALLOWED_RPC_FUNCTIONS).toContain("delete_transaction")
   })
 })

@@ -5,6 +5,9 @@
  */
 
 export type TransactionType = "income" | "expense" | "transfer"
+export type TransactionStatus = "pending" | "applied"
+export type AccountType = "cash" | "bank" | "card" | "savings" | "investment"
+export type ExpenseKind = "consumption" | "saving"
 
 export interface TransactionFilter {
   type?: TransactionType

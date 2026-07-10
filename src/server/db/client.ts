@@ -24,3 +24,14 @@ export function getDb(): postgres.Sql {
   }
   return client
 }
+
+/**
+ * 싱글턴 커넥션 종료 + 초기화 (테스트 teardown 용).
+ * 초기화하지 않으면 다음 getDb() 호출이 닫힌 클라이언트를 반환한다.
+ */
+export async function closeDb(): Promise<void> {
+  if (client) {
+    await client.end()
+    client = undefined
+  }
+}

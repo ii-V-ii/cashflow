@@ -40,7 +40,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: supabase start
       - run: supabase db reset
-      # pgTAP (supabase test db)는 supabase/tests에 테스트가 생기는 트랙부터 활성화
+      - run: supabase test db
       - run: pnpm test:coverage
 
   build:
