@@ -183,7 +183,7 @@ DELETE /api/v1/investment-trades/{id}
 
 | 화면 | 호출 | DB 왕복 |
 |---|---|---|
-| 대시보드 | `GET /api/v1/dashboard?year=&month=` → `get_dashboard(p_year, p_month)` (카드+캘린더 일별 합계+예산 소진율+최근 거래를 단일 jsonb로) | **1** |
+| 대시보드 | `GET /api/v1/dashboard?year=&month=` → `get_dashboard(p_year, p_month)` (순자산·총잔액 카드+캘린더 일별 합계+예산 소진율+투자 요약+최근 거래를 단일 jsonb로) | **1** |
 | 거래 목록 | `GET /api/v1/transactions?…` → 거래 조회(태그·카테고리 조인 포함) + total count(윈도우 함수 `count(*) over()`) | **1** |
 | 계좌 목록 | `GET /api/v1/accounts` → `accounts ⋈ account_balances_v` | **1** |
 | 월 결산 | `GET /api/v1/settlements/monthly?…` → `get_monthly_settlement(p_year, p_month)` | **1** |
@@ -195,6 +195,14 @@ DELETE /api/v1/investment-trades/{id}
 
 - Materialized view는 사용하지 않는다(수만 건 규모에서 일반 뷰 + 인덱스로 충분).
 - 핵심 인덱스(상세 DDL은 DB.md): `(account_id, status) INCLUDE(type, amount)`, `(to_account_id, status) WHERE to_account_id IS NOT NULL`, `(date, type, status)`, FIFO 부분 인덱스 `WHERE trade_type='buy' AND remaining_quantity>0`.
+- **보고서 3종(trend·categories·net-worth)은 `report-service.ts`의 읽기 전용 SELECT 각 1왕복** —
+  대분류 롤업은 `category_rollup_v`(DB.md §2.6)로 결산 RPC와 규칙을 공유한다.
+  RPC(`get_trend_report` 등)로의 이전(2B 리뷰 M2)은 **Phase 2 통합에서 이월** —
+  이미 각 1왕복·읽기 전용이라 왕복 수/보안상 이득이 없고, 파라미터화된 SELECT 로 충분.
+  RPC-first 정합이 다시 문제되면(예: 보고서에 쓰기 결합·다중 왕복 필요) 재검토한다.
+- **net-worth 보고서의 assetTotal은 0 placeholder 유지** — 자산 평가 스냅샷
+  (`asset_valuations` 월말 시계열) 결합은 스냅샷 데이터가 축적된 뒤 이월 확장한다.
+  현재 순자산 실값은 대시보드(`get_dashboard.net_worth`)가 제공한다.
 
 ---
 

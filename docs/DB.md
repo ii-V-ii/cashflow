@@ -460,6 +460,27 @@ GROUP BY asset_id, EXTRACT(YEAR FROM date), EXTRACT(MONTH FROM date);
 
 > 구 `investment_returns`의 `unrealized_gain`/`return_rate`(수동 입력)는 뷰로 파생 불가 → legacy 스키마 보존 후 필요 시 노출 여부 재판단(MIGRATION.md §4.14).
 
+### 2.6 category_rollup_v — 대분류 롤업 공용 뷰 (Phase 2 통합)
+
+거래 × 대분류 롤업(`COALESCE(parent_id, id)`, 소분류는 부모의 name/expense_kind/color 상속)이
+`get_monthly_settlement`·`get_annual_settlement`·report-service(trend·categories) 4곳에
+중복돼 있던 것을 단일 행 단위 뷰로 통합(집계는 호출부). 마이그레이션 `20260716000010`.
+
+```sql
+CREATE OR REPLACE VIEW public.category_rollup_v
+WITH (security_invoker = on) AS
+SELECT
+  t.id                                       AS transaction_id,
+  t.date, t.type, t.status, t.amount,
+  COALESCE(c.parent_id, c.id)                AS category_id,
+  COALESCE(pc.name, c.name, '미분류')         AS category_name,
+  COALESCE(pc.expense_kind, c.expense_kind)  AS expense_kind,
+  COALESCE(pc.color, c.color)                AS color
+FROM public.transactions t
+LEFT JOIN public.categories c  ON c.id = t.category_id
+LEFT JOIN public.categories pc ON pc.id = c.parent_id;
+```
+
 ---
 
 ## 3. RPC 함수
@@ -467,7 +488,7 @@ GROUP BY asset_id, EXTRACT(YEAR FROM date), EXTRACT(MONTH FROM date);
 원칙: 쓰기 RPC는 **단일 왕복·원자 처리**, 잔액 UPDATE·자산 동기화 없음(파생이므로). 읽기 RPC는 화면 1개 = 1왕복.
 모든 함수는 `SECURITY INVOKER`, `SET search_path = public` 을 명시한다.
 
-**RAISE ERRCODE 규약 (확정, SEC-L2)**: 도메인 검증 RAISE는 메시지 매칭이 아니라 커스텀 SQLSTATE로 API 에러에 매핑한다 — `CF422` = 저축 거래 정합성 위반(→ 422 `SAVING_CATEGORY_REQUIRED`), `CF404` = 자원 없음(→ 404 `NOT_FOUND`). 매핑은 `src/server/api-errors.ts`에서 단일 관리. 저축 정합성은 `assert_tx_saving_consistency(type, category_id, to_account_id)` 헬퍼가 순방향(saving 카테고리 → 입금 계좌 필수)과 역방향(입금 계좌 보유 지출 → saving 카테고리 필수)을 모두 검증하며, `create_transaction`은 입력 기준·`update_transaction`은 부분 PATCH 병합 후 **최종 상태** 기준으로 호출한다(마이그레이션 `20260710140000_phase1_saving_consistency.sql`). 아래 3.1 초안의 인라인 검증·`P0001`은 초기 설계 기록이다.
+**RAISE ERRCODE 규약 (확정, SEC-L2)**: 도메인 검증 RAISE는 메시지 매칭이 아니라 커스텀 SQLSTATE로 API 에러에 매핑한다 — `CF422` = 저축 거래 정합성 위반(→ 422 `SAVING_CATEGORY_REQUIRED`), `CF404` = 자원 없음(→ 404 `NOT_FOUND`), `CF409` = 동일 연·월 예산 중복(→ 409 `DUPLICATE_BUDGET`), `CF490` = 매도에 소진된 매수 로트 삭제 금지(→ 409 `TRADE_HAS_DEPENDENTS`). 투자 트랙(2C)이 초안에서 쓰던 `CF409`는 예산 트랙(2A)과의 SQLSTATE 충돌로 **Phase 2 머지에서 `CF490`으로 재배정**했다(마이그레이션 `20260713000030` 헤더 참조). 그 외 투자 규약: `CF400` = 잘못된 입력(→ 400 `VALIDATION_ERROR`), `CF423` = 보유수량 부족(→ 422 `INSUFFICIENT_HOLDINGS`). 매핑은 `src/server/api-errors.ts`에서 단일 관리. 저축 정합성은 `assert_tx_saving_consistency(type, category_id, to_account_id)` 헬퍼가 순방향(saving 카테고리 → 입금 계좌 필수)과 역방향(입금 계좌 보유 지출 → saving 카테고리 필수)을 모두 검증하며, `create_transaction`은 입력 기준·`update_transaction`은 부분 PATCH 병합 후 **최종 상태** 기준으로 호출한다(마이그레이션 `20260710140000_phase1_saving_consistency.sql`). 아래 3.1 초안의 인라인 검증·`P0001`은 초기 설계 기록이다.
 **예외(확정)**: `create_investment_trade` / `delete_investment_trade` 2개 함수만 `SECURITY DEFINER SET search_path = public` 으로 확정한다(§5의 FIFO 컬럼 REVOKE와의 충돌 해소). 이 2개 함수는 **함수 로직이 유일한 FIFO 무결성 통제**이므로 입력 검증을 함수 서두에 집중한다. 나머지 RPC는 전부 SECURITY INVOKER 유지.
 
 ### 3.1 create_transaction(p jsonb) → transactions (실행 가능 초안)
@@ -839,28 +860,40 @@ $$;
 
 시그니처: `get_dashboard(p_year integer, p_month integer) RETURNS jsonb`
 
-의사코드 — 전부 `jsonb_build_object` 하위 쿼리로 조립, 왕복 1회:
+전부 `jsonb_build_object` 하위 쿼리로 조립, 왕복 1회. Phase 2 통합에서
+확정된 최종 형태(마이그레이션 `20260716000010`):
 
 ```
 RETURN jsonb_build_object(
   'total_balance',   (SELECT SUM(current_balance) FROM account_balances_v WHERE is_active),
-  'net_worth',       (SELECT SUM(current_value)  FROM asset_values_v WHERE is_active)
-                     -- 자산 미연결 활성 계좌 잔액을 더할지는 API.md 정의를 따름
-                     + (SELECT COALESCE(SUM(ab.current_balance),0)
-                        FROM account_balances_v ab JOIN accounts a ON a.id = ab.account_id
-                        WHERE a.asset_id IS NULL AND a.is_active),
+  'account_count',   활성 계좌 수,
+  'net_worth',       자산 미연동 활성 계좌 잔액 합
+                       (account_balances_v ⋈ accounts WHERE asset_id IS NULL)
+                     + (SELECT SUM(current_value) FROM asset_values_v WHERE is_active)
+                     -- 자산 연동 계좌 잔액은 asset_values_v 에 포함 → 이중 계상 방지,
   'month_income'  / 'month_expense':
         SELECT SUM(amount) FILTER (WHERE type='income'), SUM(...) FILTER (WHERE type='expense')
         FROM transactions
         WHERE date >= 월초 AND date < 익월초 AND status='applied',
-  'investment',      (SELECT jsonb_build_object('realized_gain', Σ, 'dividend', Σ)
-                      FROM monthly_investment_summary_v WHERE year=p_year AND month=p_month),
-  'budget_usage',    (해당 월 budget_totals_v.total_expense 대비 실지출 비율,
-                      실지출 = get_budget_actuals 와 동일 필터: type='expense', status='applied'),
+  'investment',      활성 자산이 하나도 없으면 null (UI 빈 상태), 아니면
+                     jsonb_build_object(
+                       'totalValue',   Σ asset_values_v.current_value (is_active),
+                       'invested' / 'sold' / 'dividend' / 'realizedGain':
+                          해당 월 monthly_investment_summary_v 합계),
+  'budget_usage',    해당 월 예산이 없으면 null (UI 빈 상태), 아니면
+                     jsonb_build_object(
+                       'plannedTotal', budget_totals_v.total_expense,
+                       'actualTotal',  실지출(= month_expense — get_budget_actuals 와
+                                       동일 필터: type='expense', status='applied', 저축 포함),
+                       'ratio',        actual / planned * 100 (소수 1자리) —
+                                       planned 0 → null (get_budget_actuals 규약)),
   'calendar',        (SELECT jsonb_agg(jsonb_build_object('date', date, 'income', Σ, 'expense', Σ))
-                      FROM transactions WHERE 해당 월 AND status='applied' GROUP BY date)
+                      FROM transactions WHERE 해당 월 AND status='applied' GROUP BY date),
+  'recent_transactions', 최근 5건 (pending 포함 — Transaction DTO 인라인 조립)
 )
 ```
+
+> **investment/budget_usage 키는 camelCase**(DTO 그대로 통과 — `dashboard-mapping.ts`).
 
 > **캘린더 pending 제외(확정)**: 캘린더 집계는 `status='applied'` 거래만 포함한다(레거시 동일). pending(예정) 거래는 캘린더·집계에 나타나지 않으며, **거래 목록 화면에서만 '예정' 배지로 표시**한다.
 

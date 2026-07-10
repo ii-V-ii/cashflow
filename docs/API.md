@@ -386,11 +386,15 @@ Category = { id, name, type: 'income'|'expense',
 **응답** `200`:
 
 ```ts
-{ netWorth: number, totalBalance: number,           // 순자산 · 총잔액 카드
-  investment: { totalValue, totalGain, gainRate },  // 투자수익 카드
+{ netWorth: number,                                 // 자산 미연동 계좌 잔액 + 자산 평가액 합
+  totalBalance: number, accountCount: number,       // 총잔액 카드 (활성 계좌 전체)
+  investment: {                                     // 투자 요약 위젯 — 자산 없으면 null
+    totalValue,                                     //   활성 자산 평가액 합 (asset_values_v)
+    invested, sold, dividend, realizedGain },       //   해당 월 매수/매도/배당/실현손익
   monthlyIncome: number, monthlyExpense: number,    // 월 수입/지출 카드
   dailyTotals: { date, income, expense }[],         // 거래 캘린더 (해당 월 전체)
-  budget: { plannedTotal, actualTotal, ratio },     // 예산 소진율 위젯
+  budget: {                                         // 예산 소진율 위젯 — 해당 월 예산 없으면 null
+    plannedTotal, actualTotal, ratio },
   recentTransactions: Transaction[] }               // 최근 5건
 ```
 
