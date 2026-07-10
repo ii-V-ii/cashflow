@@ -3,7 +3,9 @@
 import Link from "next/link"
 import { useState } from "react"
 
+import { BudgetUsageWidget } from "@/features/dashboard/components/budget-usage-widget"
 import { CalendarWidget } from "@/features/dashboard/components/calendar-widget"
+import { InvestmentWidget } from "@/features/dashboard/components/investment-widget"
 import { useDashboard } from "@/features/dashboard/hooks/use-dashboard"
 import { MonthNavigator } from "@/features/transactions/components/month-navigator"
 import { TransactionList } from "@/features/transactions/components/transaction-list"
@@ -12,16 +14,6 @@ import { formatKrw } from "@/lib/format"
 function currentYm(): string {
   const now = new Date()
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
-}
-
-/** 예산·투자 트랙 랜딩 전까지의 "준비 중" 위젯 (get_dashboard null placeholder 대응) */
-function UpcomingWidget({ title }: { title: string }) {
-  return (
-    <div className="flex flex-col gap-1 rounded-xl bg-surface-raised p-4 ring-1 ring-hairline">
-      <p className="text-xs font-medium text-ink-muted">{title}</p>
-      <p className="text-sm text-ink-muted">준비 중</p>
-    </div>
-  )
 }
 
 /**
@@ -131,27 +123,8 @@ export function HomeScreen() {
       </section>
 
       <section aria-label="예산·투자" className="grid grid-cols-2 gap-2">
-        {/* 예산 소진율·투자 수익 위젯 — 예산(2A)·투자(2C) 트랙 랜딩 후 실데이터 연결 */}
-        {data.budget === null ? (
-          <UpcomingWidget title="예산 소진율" />
-        ) : (
-          <div className="rounded-xl bg-surface-raised p-4 ring-1 ring-hairline">
-            <p className="text-xs font-medium text-ink-muted">예산 소진율</p>
-            <p className="amount text-[length:var(--text-amount-md)] font-semibold text-ink">
-              {Math.round(data.budget.ratio)}%
-            </p>
-          </div>
-        )}
-        {data.investment === null ? (
-          <UpcomingWidget title="투자 수익" />
-        ) : (
-          <div className="rounded-xl bg-surface-raised p-4 ring-1 ring-hairline">
-            <p className="text-xs font-medium text-ink-muted">투자 수익</p>
-            <p className="amount text-[length:var(--text-amount-md)] font-semibold text-ink">
-              {formatKrw(data.investment.totalGain)}
-            </p>
-          </div>
-        )}
+        <BudgetUsageWidget budget={data.budget} />
+        <InvestmentWidget investment={data.investment} />
       </section>
 
       <section aria-label="최근 거래" className="flex flex-col gap-2">

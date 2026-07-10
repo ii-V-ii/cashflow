@@ -56,7 +56,7 @@ test.describe("Phase 2B 결산·대시보드·보고서", () => {
     await login(page)
   })
 
-  test("대시보드 — 요약 카드·캘린더·placeholder 위젯·최근 거래", async ({ page }) => {
+  test("대시보드 — 요약 카드·캘린더·빈 상태 위젯·최근 거래", async ({ page }) => {
     await page.goto("/")
 
     // 이번 달 지출(hero): 저축 포함 150,000 / pending 제외
@@ -68,11 +68,38 @@ test.describe("Phase 2B 결산·대시보드·보고서", () => {
     // 캘린더 위젯 — applied 거래 합계 표시
     await expect(page.getByTestId("dashboard-calendar")).toBeVisible()
 
-    // 예산·투자 위젯은 타 트랙 랜딩 전 "준비 중" placeholder
-    await expect(page.getByText("준비 중")).toHaveCount(2)
+    // 예산·자산이 없으면 위젯은 빈 상태 (Phase 2 통합 — placeholder 대체)
+    await expect(page.getByText("이번 달 예산이 없습니다")).toBeVisible()
+    await expect(page.getByText("등록된 자산이 없습니다")).toBeVisible()
 
     // 최근 거래 목록
     await expect(page.getByRole("region", { name: "최근 거래" })).toContainText("급여")
+  })
+
+  test("대시보드 — 예산 소진율 위젯은 계획 대비 실지출을 보여준다", async ({ page }) => {
+    // 당월 예산: 식비 300,000 계획 → 실지출 150,000 = 50%
+    const [year, month] = thisYm.split("-").map(Number)
+    const sql = postgres(LOCAL_SUPABASE.databaseUrl, { prepare: false, max: 1 })
+    try {
+      await sql`
+        WITH b AS (
+          INSERT INTO public.budgets (name, year, month)
+          VALUES (${`${thisYm} 예산`}, ${year}, ${month}) RETURNING id
+        )
+        INSERT INTO public.budget_items (budget_id, category_id, planned_amount)
+        SELECT b.id, (SELECT id FROM public.categories WHERE name = '식비'), 300000
+        FROM b
+      `
+    } finally {
+      await sql.end()
+    }
+
+    await page.goto("/")
+
+    const budgetWidget = page.getByRole("progressbar", { name: "예산 소진율" })
+    await expect(budgetWidget).toBeVisible()
+    await expect(page.getByText("50%")).toBeVisible()
+    await expect(page.getByText("150,000원 / 300,000원")).toBeVisible()
   })
 
   test("월 결산 — 순수익·저축·전월 대비·계좌 변동", async ({ page }) => {
