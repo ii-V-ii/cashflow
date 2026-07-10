@@ -126,6 +126,8 @@ describe("callRpc", () => {
     expect(ALLOWED_RPC_FUNCTIONS).toContain("get_budget_actuals")
     expect(ALLOWED_RPC_FUNCTIONS).toContain("get_annual_grid")
     expect(ALLOWED_RPC_FUNCTIONS).toContain("get_budget_summary")
+  })
+
   test("whitelist covers the recurring RPCs (Phase 2D, API.md §12)", () => {
     expect(ALLOWED_RPC_FUNCTIONS).toContain("create_recurring")
     expect(ALLOWED_RPC_FUNCTIONS).toContain("update_recurring")
