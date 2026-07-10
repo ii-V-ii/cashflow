@@ -1,7 +1,8 @@
 import { defineConfig, devices } from "@playwright/test"
 
 // 로컬 개발 서버(3000)와 충돌하지 않는 E2E 전용 포트
-const PORT = 3100
+export const E2E_PORT = 3100
+const PORT = E2E_PORT
 
 /**
  * E2E는 반드시 로컬 Supabase(supabase start) 대상 —
@@ -29,7 +30,9 @@ export default defineConfig({
   // dev 서버 최초 컴파일 구간에서 30초 기본값 초과로 플레이크 발생 — 여유 확보
   timeout: 60_000,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 0,
+  // 로컬 1회 재시도: dev 서버 Fast Refresh 전체 리로드가 상호작용을 끊는
+  // 환경성 플레이크 대비(워밍업으로 1차 방어 — global-setup.ts 참조)
+  retries: process.env.CI ? 2 : 1,
   reporter: process.env.CI ? [["html"], ["github"]] : "list",
   globalSetup: "./tests/e2e/global-setup.ts",
   use: {
