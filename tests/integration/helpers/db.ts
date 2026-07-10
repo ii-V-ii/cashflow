@@ -42,3 +42,13 @@ export async function truncateTransactionCore(sql: postgres.Sql): Promise<void> 
     CASCADE
   `
 }
+
+/** Phase 2E 예측 테이블 초기화 (results는 scenario FK CASCADE) */
+export async function truncateForecast(sql: postgres.Sql): Promise<void> {
+  await sql`
+    TRUNCATE TABLE
+      public.forecast_results,
+      public.forecast_scenarios
+    CASCADE
+  `
+}

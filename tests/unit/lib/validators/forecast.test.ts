@@ -149,3 +149,31 @@ describe("forecastResultsQuerySchema", () => {
     expect(result.success).toBe(false)
   })
 })
+
+describe("예측 기간 상한 (120개월)", () => {
+  it("120개월 이내 기간은 통과한다", () => {
+    const result = createForecastScenarioSchema.safeParse({
+      name: "10년",
+      startDate: "2026-01-01",
+      endDate: "2036-01-01",
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it("120개월 초과 기간은 실패한다 (무한 루프·과대 저장 방지)", () => {
+    const result = createForecastScenarioSchema.safeParse({
+      name: "너무 긴 시나리오",
+      startDate: "2026-01-01",
+      endDate: "2036-02-01",
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it("update에서도 두 날짜가 모두 오면 상한을 검증한다", () => {
+    const result = updateForecastScenarioSchema.safeParse({
+      startDate: "2026-01-01",
+      endDate: "2040-01-01",
+    })
+    expect(result.success).toBe(false)
+  })
+})
