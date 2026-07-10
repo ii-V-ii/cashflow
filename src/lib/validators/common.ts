@@ -14,6 +14,25 @@ export const krwAmount = z
   .int("금액은 정수여야 합니다")
   .max(MAX_KRW_AMOUNT, "금액은 10조 원을 초과할 수 없습니다")
 
+/** 연도 쿼리 파라미터 — `year=YYYY` 정수 (API.md §1.3) */
+export const yearQuery = z.coerce
+  .number()
+  .int("연도는 정수여야 합니다")
+  .min(1970, "연도는 1970 이후여야 합니다")
+  .max(2100, "연도는 2100 이전이어야 합니다")
+
+/** 월 쿼리 파라미터 — `month=1~12` 정수 (API.md §1.3) */
+export const monthQuery = z.coerce
+  .number()
+  .int("월은 정수여야 합니다")
+  .min(1, "월은 1~12 사이여야 합니다")
+  .max(12, "월은 1~12 사이여야 합니다")
+
+/** 'YYYY-MM' 연월 문자열 (보고서 추이 §14.1 전용) */
+export const yearMonthString = z
+  .string()
+  .regex(/^\d{4}-(0[1-9]|1[0-2])$/, "연월은 YYYY-MM 형식이어야 합니다")
+
 /** 페이지네이션 쿼리 (기본 page=1, limit=20, 최대 100 — API.md §1.3) */
 export const paginationQuery = z.object({
   page: z.coerce.number().int().min(1).default(1),
