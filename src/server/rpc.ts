@@ -34,6 +34,7 @@ export const ALLOWED_RPC_FUNCTIONS = [
   "snapshot_asset_valuations",
   "get_dashboard",
   "get_monthly_settlement",
+  "get_annual_settlement",
   "get_budget_actuals",
   "get_annual_grid",
   "get_investment_summary",

@@ -17,6 +17,43 @@ export function defaultTrendRange(now: Date): { from: string; to: string } {
   }
 }
 
+export interface RawTrendRow {
+  ym: string
+  income: number
+  expense: number
+  saving: number
+}
+
+export interface TrendMonth extends RawTrendRow {
+  net: number
+}
+
+/** 구간 내 빠진 달을 0으로 채우고 net(income-expense)을 파생 (PRD §3.10) */
+export function fillTrendMonths(
+  from: string,
+  to: string,
+  rows: readonly RawTrendRow[],
+): TrendMonth[] {
+  const byYm = new Map(rows.map((row) => [row.ym, row]))
+  const [fromYear, fromMonth] = from.split("-").map(Number)
+  const [toYear, toMonth] = to.split("-").map(Number)
+  const monthCount = (toYear - fromYear) * 12 + (toMonth - fromMonth) + 1
+
+  return Array.from({ length: Math.max(monthCount, 0) }, (_, index) => {
+    const ym = ymString(fromYear, fromMonth - 1 + index)
+    const source = byYm.get(ym)
+    const income = source?.income ?? 0
+    const expense = source?.expense ?? 0
+    return {
+      ym,
+      income,
+      expense,
+      saving: source?.saving ?? 0,
+      net: income - expense,
+    }
+  })
+}
+
 /** 'YYYY-MM' 구간 → SQL 날짜 경계 [start, endExclusive) */
 export function monthRange(
   from: string,
