@@ -17,6 +17,7 @@ export async function resetSeedData(): Promise<void> {
   try {
     await sql`
       TRUNCATE TABLE
+        public.budget_items, public.budgets,
         public.transaction_tags, public.transactions,
         public.tags, public.accounts, public.categories
       CASCADE
