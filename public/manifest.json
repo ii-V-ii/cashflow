@@ -1,11 +1,15 @@
 {
   "name": "금전출납부",
   "short_name": "금전출납부",
-  "description": "개인용 금전출납부. 수입/지출 관리, 예산, 결산, 자산 관리.",
+  "description": "개인용 금전출납부. 수입/지출 관리, 예산, 결산, 자산 관리, 투자 수익률, 미래 예측.",
+  "id": "/",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "orientation": "portrait",
   "background_color": "#ffffff",
   "theme_color": "#0f172a",
+  "lang": "ko",
   "icons": [
     {
       "src": "/icons/icon-192x192.png",

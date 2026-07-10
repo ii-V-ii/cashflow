@@ -1,36 +1,59 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Cashflow v2 — 금전출납부
 
-## Getting Started
+개인용 금전출납부 (Next.js 16 + Supabase Postgres). `rebuild/v2` 브랜치에서 전면 재구축 중이다.
 
-First, run the development server:
+- 아키텍처 스펙: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- DB 스키마·RPC 단일 진실: [docs/DB.md](docs/DB.md)
+- REST API: [docs/API.md](docs/API.md)
+
+## 기존(v1) 코드 참조
+
+v1 앱(SQLite + Drizzle 기반)은 `main` 브랜치에 그대로 있다. 재구축 중 기존 구현을 참조하려면:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+git show main:package.json
+git show main:src/lib/services/transaction-service.ts
+git ls-tree -r main --name-only src/
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 시작하기
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+pnpm install
+cp .env.example .env.local   # 값 채우기
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+# 로컬 Supabase (Docker 필요)
+pnpm supabase start          # 로컬 스택 기동
+pnpm supabase db reset       # supabase/migrations 전체 적용
 
-## Learn More
+pnpm dev                     # http://localhost:3000
+```
 
-To learn more about Next.js, take a look at the following resources:
+## 명령어
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+pnpm dev              # 개발 서버
+pnpm build            # 프로덕션 빌드
+pnpm lint             # ESLint
+pnpm typecheck        # tsc --noEmit
+pnpm test             # Vitest (unit + integration + cross)
+pnpm test:coverage    # 커버리지 (80% 게이트)
+pnpm test:e2e         # Playwright E2E
+pnpm supabase <cmd>   # Supabase CLI
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 구조 (요약)
 
-## Deploy on Vercel
+```text
+src/
+├── app/(app)/            # 페이지 라우트
+├── app/api/v1/           # REST v1 — 유일한 변경 진입점
+├── server/               # 서버 전용 (db client, callRpc, api-response)
+├── features/<기능>/       # components/ hooks/ api.ts 수직 분할
+├── lib/                  # query-keys, validators, calculations, forecast
+└── types/                # 공유 타입
+supabase/migrations/      # 스키마·뷰·RPC의 단일 진실 (SQL-first)
+tests/                    # unit / integration / cross / e2e
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+상세 규칙은 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) §3(디렉터리)·§6(캐시)·§10(테스트)·§11(CI) 참조.
