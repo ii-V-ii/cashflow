@@ -85,7 +85,7 @@ describe("query key factory", () => {
   })
 
   test("asset keys cover list/detail/valuations/portfolio and categories", () => {
-    const filter = { categoryId: "c-1" }
+    const filter = { kind: "financial" as const }
     expect(qk.assets.list(filter)).toEqual(["assets", "list", filter])
     expect(qk.assets.detail("a-1")).toEqual(["assets", "detail", "a-1"])
     expect(qk.assets.valuations("a-1")).toEqual(["assets", "valuations", "a-1"])

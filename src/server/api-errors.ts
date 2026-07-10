@@ -83,6 +83,7 @@ export function mapApiError(
 
   // RPC RAISE는 커스텀 SQLSTATE 규약으로 매핑한다 (SEC-L2: 메시지 substring 매칭 금지).
   // CF422 = 저축 거래 정합성 위반, CF404 = 자원 없음 — DB.md §3 RAISE 규약과 1:1.
+  // CF400/CF423/CF490 = 투자 RPC 규약(마이그레이션 20260713000030 헤더 참조).
   if (code === "CF422") {
     return { status: 422, code: "SAVING_CATEGORY_REQUIRED", message }
   }
@@ -92,6 +93,16 @@ export function mapApiError(
   // CF409 = 동일 year+month 예산 중복 (409 DUPLICATE_BUDGET — API.md §16)
   if (code === "CF409") {
     return { status: 409, code: "DUPLICATE_BUDGET", message }
+  }
+  if (code === "CF400") {
+    return { status: 400, code: "VALIDATION_ERROR", message }
+  }
+  if (code === "CF423") {
+    return { status: 422, code: "INSUFFICIENT_HOLDINGS", message }
+  }
+  // CF490 = 매도에 소진된 매수 로트 삭제 금지 (머지 시 CF409 충돌 재배정 — 예산 CF409와 분리)
+  if (code === "CF490") {
+    return { status: 409, code: "TRADE_HAS_DEPENDENTS", message }
   }
 
   // 상세는 서버 로그에만 — 응답에 노출 금지 (API.md §16 INTERNAL_ERROR)

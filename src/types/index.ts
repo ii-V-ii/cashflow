@@ -20,8 +20,8 @@ export interface TransactionFilter {
 }
 
 export interface AssetFilter {
-  categoryId?: string
-  isActive?: boolean
+  kind?: "financial" | "non_financial"
+  activeOnly?: boolean
 }
 
 export interface TradeFilter {

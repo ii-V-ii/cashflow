@@ -47,3 +47,16 @@ export async function truncateTransactionCore(sql: postgres.Sql): Promise<void> 
     CASCADE
   `
 }
+
+/** Phase 2C 자산·투자 테이블 초기화 (accounts.asset_id FK 때문에 accounts 포함) */
+export async function truncateAssetInvestmentCore(sql: postgres.Sql): Promise<void> {
+  await sql`
+    TRUNCATE TABLE
+      public.investment_trades,
+      public.asset_valuations,
+      public.accounts,
+      public.assets,
+      public.asset_categories
+    CASCADE
+  `
+}
