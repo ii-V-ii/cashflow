@@ -1,9 +1,21 @@
 import { z } from "zod"
 
-/** 'YYYY-MM-DD' 날짜 문자열 (API.md §1.3) */
+/** 형식이 맞아도 달력에 없는 날짜(예: 2026-02-30)를 거부한다 (DB date 캐스팅 500 방지) */
+function isValidCalendarDate(value: string): boolean {
+  const [year, month, day] = value.split("-").map(Number)
+  const date = new Date(Date.UTC(year, month - 1, day))
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  )
+}
+
+/** 'YYYY-MM-DD' 날짜 문자열 (API.md §1.3) — 달력 유효성 포함 */
 export const dateString = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, "날짜는 YYYY-MM-DD 형식이어야 합니다")
+  .refine(isValidCalendarDate, "존재하지 않는 날짜입니다")
 
 /** KRW 금액 상한 — 10조 원 (SEC-M2: 비정상 초대형 값 차단) */
 export const MAX_KRW_AMOUNT = 10_000_000_000_000

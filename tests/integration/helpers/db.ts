@@ -35,12 +35,13 @@ export async function truncateBudgets(sql: postgres.Sql): Promise<void> {
   await sql`TRUNCATE TABLE public.budget_items, public.budgets CASCADE`
 }
 
-/** Phase 1 거래 코어 테이블 초기화 (FK CASCADE 포함) */
+/** 거래 코어 테이블 초기화 (FK CASCADE 포함) — Phase 2D부터 정기거래 테이블 포함 */
 export async function truncateTransactionCore(sql: postgres.Sql): Promise<void> {
   await sql`
     TRUNCATE TABLE
       public.transaction_tags,
       public.transactions,
+      public.recurring_transactions,
       public.tags,
       public.accounts,
       public.categories

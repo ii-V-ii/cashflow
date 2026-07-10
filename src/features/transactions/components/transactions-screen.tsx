@@ -7,6 +7,7 @@ import { BottomSheet } from "@/components/ui/bottom-sheet"
 import { Button } from "@/components/ui/button"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Input } from "@/components/ui/input"
+import { RecurringTab } from "@/features/recurring/components/recurring-tab"
 import { MonthNavigator } from "@/features/transactions/components/month-navigator"
 import { TransactionForm } from "@/features/transactions/components/transaction-form"
 import { TransactionList } from "@/features/transactions/components/transaction-list"
@@ -42,6 +43,7 @@ export function TransactionsScreen() {
   const searchParams = useSearchParams()
   const showToast = useToastStore((state) => state.show)
 
+  const tab = searchParams.get("tab") === "recurring" ? "recurring" : "all"
   const ym = searchParams.get("ym") ?? currentYm()
   const typeFilter = (searchParams.get("type") ?? undefined) as
     | "income"
@@ -64,12 +66,13 @@ export function TransactionsScreen() {
   )
 
   const isFiltered = Boolean(typeFilter || search)
-  const monthQuery = useTransactionsMonth(ym)
+  // 정기 거래 탭에서는 거래 목록 요청을 만들지 않는다 (불필요한 왕복 방지)
+  const monthQuery = useTransactionsMonth(ym, tab === "all")
   const listQuery = useTransactionsList(
     { type: typeFilter, search: search || undefined },
     page,
     20,
-    isFiltered,
+    isFiltered && tab === "all",
   )
   const activeQuery = isFiltered ? listQuery : monthQuery
   const items = useMemo(
@@ -110,104 +113,144 @@ export function TransactionsScreen() {
 
   return (
     <main className="mx-auto flex max-w-2xl flex-col gap-4 px-4 pt-4">
-      <MonthNavigator ym={ym} onChange={(next) => setParams({ ym: next, page: null })} />
-
-      {/* 상단 요약 — 카드 아님, 여백과 타이포만 (UI.md §3.2 레이아웃 리듬) */}
-      {!isFiltered && (
-        <section aria-label="월 요약" className="flex items-end justify-between px-1">
-          <div>
-            <p className="text-xs text-ink-muted">이번 달 지출</p>
-            <p
-              className="amount text-[length:var(--text-amount-hero)] font-bold leading-tight text-ink"
-              data-testid="month-expense-total"
-            >
-              {formatKrw(summary.expense)}
-            </p>
-          </div>
-          <div className="text-right">
-            <p className="text-xs text-ink-muted">수입</p>
-            <p className="amount text-[length:var(--text-amount-md)] font-semibold text-income-fg">
-              {formatKrw(summary.income)}
-            </p>
-          </div>
-        </section>
-      )}
-
-      {/* 필터 칩 + 검색 — 상태를 URL에 유지 */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-        {TYPE_FILTERS.map((filter) => (
+      {/* 탭: 전체 | 정기 거래 (PRD §3.2) — 상태는 URL에 유지 */}
+      <div
+        role="tablist"
+        aria-label="거래 화면 탭"
+        className="grid grid-cols-2 gap-1 rounded-xl bg-surface-sunken p-1"
+      >
+        {(
+          [
+            { value: "all", label: "전체" },
+            { value: "recurring", label: "정기 거래" },
+          ] as const
+        ).map((option) => (
           <button
-            key={filter.label}
+            key={option.value}
             type="button"
+            role="tab"
+            aria-selected={tab === option.value}
+            data-testid={`transactions-tab-${option.value}`}
             onClick={() =>
-              setParams({ type: filter.value ?? null, page: null })
-            }
-            className={cn(
-              "h-11 shrink-0 rounded-full border border-hairline px-4 text-sm text-ink-muted transition-colors",
-              typeFilter === filter.value &&
-                "border-ink bg-surface-sunken font-medium text-ink",
-            )}
-          >
-            {filter.label}
-          </button>
-        ))}
-        <Input
-          type="search"
-          defaultValue={search}
-          placeholder="내용·메모 검색"
-          aria-label="거래 검색"
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
               setParams({
-                search: event.currentTarget.value || null,
+                tab: option.value === "all" ? null : option.value,
                 page: null,
               })
             }
-          }}
-          className="h-11 min-w-36 flex-1"
-        />
+            className={cn(
+              "h-11 rounded-lg text-sm font-medium text-ink-muted transition-colors",
+              tab === option.value && "bg-surface-raised font-semibold text-ink shadow-sm",
+            )}
+          >
+            {option.label}
+          </button>
+        ))}
       </div>
 
-      {activeQuery.isPending ? (
-        <div className="flex flex-col gap-2" aria-hidden>
-          {Array.from({ length: 6 }).map((_, index) => (
-            <div key={index} className="h-16 animate-pulse rounded-xl bg-surface-sunken" />
-          ))}
-        </div>
-      ) : activeQuery.isError ? (
-        <div className="flex flex-col items-center gap-3 py-16">
-          <p className="text-sm text-ink-muted">목록을 불러오지 못했습니다</p>
-          <Button variant="outline" className="h-11" onClick={() => activeQuery.refetch()}>
-            다시 시도
-          </Button>
-        </div>
-      ) : (
-        <TransactionList items={items} onSelect={setEditing} />
-      )}
+      {tab === "recurring" && <RecurringTab />}
 
-      {/* 필터 모드 페이지네이션 */}
-      {isFiltered && activeQuery.data && activeQuery.data.total > activeQuery.data.limit && (
-        <nav aria-label="페이지" className="flex items-center justify-center gap-3 py-2">
-          <Button
-            variant="outline"
-            className="h-11"
-            disabled={page <= 1}
-            onClick={() => setParams({ page: String(page - 1) })}
-          >
-            이전
-          </Button>
-          <span className="text-sm text-ink-muted">
-            {page} / {Math.ceil(activeQuery.data.total / activeQuery.data.limit)}
-          </span>
-          <Button
-            variant="outline"
-            className="h-11"
-            disabled={page >= Math.ceil(activeQuery.data.total / activeQuery.data.limit)}
-            onClick={() => setParams({ page: String(page + 1) })}
-          >
-            다음
-          </Button>
-        </nav>
+      {tab === "all" && (
+        <>
+          <MonthNavigator ym={ym} onChange={(next) => setParams({ ym: next, page: null })} />
+
+          {/* 상단 요약 — 카드 아님, 여백과 타이포만 (UI.md §3.2 레이아웃 리듬) */}
+          {!isFiltered && (
+            <section aria-label="월 요약" className="flex items-end justify-between px-1">
+              <div>
+                <p className="text-xs text-ink-muted">이번 달 지출</p>
+                <p
+                  className="amount text-[length:var(--text-amount-hero)] font-bold leading-tight text-ink"
+                  data-testid="month-expense-total"
+                >
+                  {formatKrw(summary.expense)}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-ink-muted">수입</p>
+                <p className="amount text-[length:var(--text-amount-md)] font-semibold text-income-fg">
+                  {formatKrw(summary.income)}
+                </p>
+              </div>
+            </section>
+          )}
+
+          {/* 필터 칩 + 검색 — 상태를 URL에 유지 */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+            {TYPE_FILTERS.map((filter) => (
+              <button
+                key={filter.label}
+                type="button"
+                onClick={() =>
+                  setParams({ type: filter.value ?? null, page: null })
+                }
+                className={cn(
+                  "h-11 shrink-0 rounded-full border border-hairline px-4 text-sm text-ink-muted transition-colors",
+                  typeFilter === filter.value &&
+                    "border-ink bg-surface-sunken font-medium text-ink",
+                )}
+              >
+                {filter.label}
+              </button>
+            ))}
+            <Input
+              type="search"
+              defaultValue={search}
+              placeholder="내용·메모 검색"
+              aria-label="거래 검색"
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  setParams({
+                    search: event.currentTarget.value || null,
+                    page: null,
+                  })
+                }
+              }}
+              className="h-11 min-w-36 flex-1"
+            />
+          </div>
+
+          {activeQuery.isPending ? (
+            <div className="flex flex-col gap-2" aria-hidden>
+              {Array.from({ length: 6 }).map((_, index) => (
+                <div key={index} className="h-16 animate-pulse rounded-xl bg-surface-sunken" />
+              ))}
+            </div>
+          ) : activeQuery.isError ? (
+            <div className="flex flex-col items-center gap-3 py-16">
+              <p className="text-sm text-ink-muted">목록을 불러오지 못했습니다</p>
+              <Button variant="outline" className="h-11" onClick={() => activeQuery.refetch()}>
+                다시 시도
+              </Button>
+            </div>
+          ) : (
+            <TransactionList items={items} onSelect={setEditing} />
+          )}
+
+          {/* 필터 모드 페이지네이션 */}
+          {isFiltered && activeQuery.data && activeQuery.data.total > activeQuery.data.limit && (
+            <nav aria-label="페이지" className="flex items-center justify-center gap-3 py-2">
+              <Button
+                variant="outline"
+                className="h-11"
+                disabled={page <= 1}
+                onClick={() => setParams({ page: String(page - 1) })}
+              >
+                이전
+              </Button>
+              <span className="text-sm text-ink-muted">
+                {page} / {Math.ceil(activeQuery.data.total / activeQuery.data.limit)}
+              </span>
+              <Button
+                variant="outline"
+                className="h-11"
+                disabled={page >= Math.ceil(activeQuery.data.total / activeQuery.data.limit)}
+                onClick={() => setParams({ page: String(page + 1) })}
+              >
+                다음
+              </Button>
+            </nav>
+          )}
+        </>
       )}
 
       {/* 수정 시트 */}

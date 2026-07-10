@@ -47,6 +47,12 @@ describe("mapApiError (API.md §16 에러 코드 일람)", () => {
     expect(mapApiError(pgError("22P02")).code).toBe("VALIDATION_ERROR")
   })
 
+  test("존재하지 않는 달력 날짜(22008) → 400 VALIDATION_ERROR (500으로 새지 않게)", () => {
+    const mapped = mapApiError(pgError("22008"))
+    expect(mapped.status).toBe(400)
+    expect(mapped.code).toBe("VALIDATION_ERROR")
+  })
+
   test("저축 정합성 RPC 검증(SQLSTATE CF422) → 422 SAVING_CATEGORY_REQUIRED, 메시지 유지", () => {
     const mapped = mapApiError(
       new RpcError("CF422", "저축 거래는 입금 계좌(to_account_id)가 필요합니다"),

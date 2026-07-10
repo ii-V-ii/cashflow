@@ -126,5 +126,12 @@ describe("callRpc", () => {
     expect(ALLOWED_RPC_FUNCTIONS).toContain("get_budget_actuals")
     expect(ALLOWED_RPC_FUNCTIONS).toContain("get_annual_grid")
     expect(ALLOWED_RPC_FUNCTIONS).toContain("get_budget_summary")
+  test("whitelist covers the recurring RPCs (Phase 2D, API.md §12)", () => {
+    expect(ALLOWED_RPC_FUNCTIONS).toContain("create_recurring")
+    expect(ALLOWED_RPC_FUNCTIONS).toContain("update_recurring")
+    expect(ALLOWED_RPC_FUNCTIONS).toContain("delete_recurring")
+    expect(ALLOWED_RPC_FUNCTIONS).toContain("process_due_transactions")
+    // 내부 헬퍼는 REST 경로에서 직접 호출 불가
+    expect(ALLOWED_RPC_FUNCTIONS).not.toContain("refill_recurring_pending")
   })
 })

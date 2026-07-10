@@ -19,6 +19,7 @@ export async function resetSeedData(): Promise<void> {
       TRUNCATE TABLE
         public.budget_items, public.budgets,
         public.transaction_tags, public.transactions,
+        public.recurring_transactions,
         public.tags, public.accounts, public.categories
       CASCADE
     `
