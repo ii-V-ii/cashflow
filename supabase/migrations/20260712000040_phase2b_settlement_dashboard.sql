@@ -7,6 +7,10 @@
 --   투자(monthly_investment_summary_v)·자산(asset_values_v) 뷰는 타 트랙에서
 --   랜딩되므로 여기서는 참조하지 않고 null placeholder 로 반환한다 —
 --   Phase 2 통합에서 get_dashboard 를 CREATE OR REPLACE 로 확장한다.
+--
+-- 보고서(API.md §14) 3종은 현재 src/server/services/report-service.ts 의 읽기 전용
+-- SELECT(각 1왕복)로 구현되어 있다 — RPC-first 관례와의 정합을 위해 Phase 2 통합에서
+-- RPC(get_trend_report 등)로의 이전을 검토한다.
 
 -- ============================================================
 -- 1. get_monthly_settlement(p_year, p_month) → jsonb (DB.md §3.10)
@@ -47,6 +51,10 @@ totals AS (
 -- (2) 계좌별 기초/기말 — 기초 = initial_balance + 월 시작 전 누적 효과
 --     (account_balances_v 와 동일한 UNION ALL 패턴 + date < v_start 조건.
 --      투자 매매 효과는 investment_trades 랜딩 후 Phase 2 통합에서 확장 — DB.md §3.10)
+--     [성능 주석] pre_effects 는 월 시작 전 전체 이력을 스캔한다(수용된 위험 — 단일
+--     사용자 규모). 실측 게이트: 3만 건 시드 EXPLAIN 캡처(docs/perf/phase2b-explain.md).
+--     전환 기준: 이력 누적으로 실측이 100ms 를 넘으면 월별 마감 잔액 스냅샷 테이블
+--     (예: account_month_closings)로 전환해 기초 잔액을 O(계좌 수) 조회로 대체한다.
 pre_effects AS (
   SELECT e.account_id, SUM(e.effect)::bigint AS net_effect
   FROM (
@@ -255,15 +263,53 @@ SELECT jsonb_build_object(
       WHERE t.date >= b.v_start AND t.date < b.v_end AND t.status = 'applied'
       GROUP BY t.date
     ) daily), '[]'::jsonb),
+  -- 최근 거래 5건: pending 포함이 의도된 동작 — "최근 기록" 목록이므로 예정 거래도
+  -- 노출하며, 거래 목록과 동일하게 status 필드로 '예정' 배지를 구분한다.
+  -- transaction_json(VOLATILE)을 호출하지 않고 동일 JSON 조립을 인라인한다 —
+  -- 이 함수는 같은 문장 내 선행 쓰기 가시성이 필요 없으므로 STABLE 계약을 정직하게 유지.
   'recent_transactions', COALESCE((
-    SELECT jsonb_agg(public.transaction_json(r.id)
-                     ORDER BY r.date DESC, r.created_at DESC)
+    SELECT jsonb_agg(jsonb_build_object(
+             'id', t.id,
+             'type', t.type,
+             'amount', t.amount,
+             'description', t.description,
+             'date', to_char(t.date, 'YYYY-MM-DD'),
+             'categoryId', t.category_id,
+             'category', CASE WHEN c.id IS NULL THEN NULL ELSE jsonb_build_object(
+               'id', c.id, 'name', c.name, 'icon', c.icon, 'color', c.color,
+               'expenseKind', c.expense_kind) END,
+             'accountId', t.account_id,
+             'account', jsonb_build_object('id', a.id, 'name', a.name, 'type', a.type),
+             'toAccountId', t.to_account_id,
+             'toAccount', CASE WHEN ta.id IS NULL THEN NULL ELSE jsonb_build_object(
+               'id', ta.id, 'name', ta.name, 'type', ta.type) END,
+             'memo', t.memo,
+             'tags', tg.tags,
+             'installmentMonths', t.installment_months,
+             'installmentCurrent', t.installment_current,
+             'status', t.status,
+             'recurringId', t.recurring_id,
+             'createdAt', t.created_at,
+             'updatedAt', t.updated_at)
+           ORDER BY t.date DESC, t.created_at DESC)
     FROM (
-      SELECT id, date, created_at
+      SELECT *
       FROM transactions
       ORDER BY date DESC, created_at DESC
       LIMIT 5
-    ) r), '[]'::jsonb)
+    ) t
+    JOIN accounts a ON a.id = t.account_id
+    LEFT JOIN categories c ON c.id = t.category_id
+    LEFT JOIN accounts ta ON ta.id = t.to_account_id
+    LEFT JOIN LATERAL (
+      SELECT COALESCE(
+        jsonb_agg(jsonb_build_object('id', tag.id, 'name', tag.name, 'color', tag.color)
+                  ORDER BY tag.name),
+        '[]'::jsonb) AS tags
+      FROM transaction_tags tt
+      JOIN tags tag ON tag.id = tt.tag_id
+      WHERE tt.transaction_id = t.id
+    ) tg ON true), '[]'::jsonb)
 )
 FROM balances bl, month_totals mt;
 $$;
