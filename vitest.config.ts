@@ -43,6 +43,8 @@ export default defineConfig({
           environment: "node",
           include: ["tests/integration/**/*.test.ts"],
           setupFiles: ["tests/integration/setup.ts"],
+          // 파일 간 병렬 실행 금지 — 단일 로컬 DB를 TRUNCATE로 공유 (경합 방지)
+          fileParallelism: false,
         },
       },
       {

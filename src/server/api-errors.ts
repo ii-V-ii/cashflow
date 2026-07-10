@@ -1,0 +1,95 @@
+import { ZodError } from "zod"
+
+/** 도메인 규칙 위반 등 라우트/서비스에서 의도적으로 던지는 에러 */
+export class ApiError extends Error {
+  readonly status: number
+  readonly code: string
+
+  constructor(status: number, code: string, message: string) {
+    super(message)
+    this.name = "ApiError"
+    this.status = status
+    this.code = code
+  }
+}
+
+export interface MappedApiError {
+  status: number
+  code: string
+  message: string
+}
+
+export interface MapApiErrorOptions {
+  /**
+   * FK 위반(23503)의 해석: 기본은 "참조 대상 없음"(생성/수정 시 404 NOT_FOUND),
+   * 삭제 라우트에서는 "참조 중인 자원"(409 REFERENCE_EXISTS)로 뒤집는다 (API.md §16).
+   */
+  fkMeansReference?: boolean
+}
+
+function errorCode(error: unknown): string | null {
+  if (
+    error !== null &&
+    typeof error === "object" &&
+    "code" in error &&
+    typeof (error as { code: unknown }).code === "string"
+  ) {
+    return (error as { code: string }).code
+  }
+  return null
+}
+
+/**
+ * DB/RPC/검증 에러 → API.md §16 에러 코드 매핑 (단일 관리).
+ * RPC 내부 RAISE EXCEPTION(P0001)은 메시지 규약으로 매핑한다.
+ */
+export function mapApiError(
+  error: unknown,
+  options: MapApiErrorOptions = {},
+): MappedApiError {
+  if (error instanceof ApiError) {
+    return { status: error.status, code: error.code, message: error.message }
+  }
+
+  if (error instanceof ZodError) {
+    const first = error.issues[0]
+    return {
+      status: 400,
+      code: "VALIDATION_ERROR",
+      message: first ? `${first.path.join(".")}: ${first.message}` : "잘못된 요청입니다",
+    }
+  }
+
+  const code = errorCode(error)
+  const message = error instanceof Error ? error.message : String(error)
+
+  if (code === "23503") {
+    return options.fkMeansReference
+      ? {
+          status: 409,
+          code: "REFERENCE_EXISTS",
+          message: "다른 자원이 참조 중이라 삭제할 수 없습니다",
+        }
+      : { status: 404, code: "NOT_FOUND", message: "참조한 자원이 존재하지 않습니다" }
+  }
+
+  if (code === "23514" || code === "22P02" || code === "23505") {
+    return {
+      status: 400,
+      code: "VALIDATION_ERROR",
+      message: "요청 값이 데이터 규칙에 맞지 않습니다",
+    }
+  }
+
+  if (code === "P0001") {
+    if (message.includes("저축 거래")) {
+      return { status: 422, code: "SAVING_CATEGORY_REQUIRED", message }
+    }
+    if (message.includes("NOT_FOUND")) {
+      return { status: 404, code: "NOT_FOUND", message: "자원을 찾을 수 없습니다" }
+    }
+  }
+
+  // 상세는 서버 로그에만 — 응답에 노출 금지 (API.md §16 INTERNAL_ERROR)
+  return { status: 500, code: "INTERNAL_ERROR", message: "서버 오류가 발생했습니다" }
+}

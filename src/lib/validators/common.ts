@@ -1,0 +1,29 @@
+import { z } from "zod"
+
+/** 'YYYY-MM-DD' 날짜 문자열 (API.md §1.3) */
+export const dateString = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "날짜는 YYYY-MM-DD 형식이어야 합니다")
+
+/** KRW 금액 — 정수, 소수점 금지 (API.md §1.3) */
+export const krwAmount = z.number().int("금액은 정수여야 합니다")
+
+/** 페이지네이션 쿼리 (기본 page=1, limit=20, 최대 100 — API.md §1.3) */
+export const paginationQuery = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+})
+
+/** 드래그 정렬 일괄 저장 본문 (API.md §3.6 / §4.5 공통) */
+export const reorderSchema = z.object({
+  items: z
+    .array(
+      z.object({
+        id: z.uuid(),
+        sortOrder: z.number().int().min(0),
+      }),
+    )
+    .min(1, "정렬할 항목이 필요합니다"),
+})
+
+export type ReorderInput = z.infer<typeof reorderSchema>

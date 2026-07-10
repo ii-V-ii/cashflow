@@ -1,6 +1,8 @@
 import { expect, test } from "@playwright/test"
 
-test("GET /api/v1/health returns success envelope", async ({ request }) => {
+test("GET /api/v1/health returns success envelope (인증 예외 경로)", async ({
+  request,
+}) => {
   const response = await request.get("/api/v1/health")
 
   expect(response.status()).toBe(200)
@@ -10,9 +12,9 @@ test("GET /api/v1/health returns success envelope", async ({ request }) => {
   })
 })
 
-test("dashboard placeholder page loads", async ({ page }) => {
+test("미인증 홈 접근은 로그인 페이지로 이동한다", async ({ page }) => {
   await page.goto("/")
 
-  await expect(page.locator("h1")).toBeVisible()
+  await page.waitForURL("**/login")
   await expect(page.locator("h1")).toHaveText("금전출납부")
 })

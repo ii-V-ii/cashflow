@@ -46,6 +46,34 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+
+  /* ── 모던 원장 디자인 토큰 (docs/UI.md §6) ───────────────── */
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-hairline: var(--hairline);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-income: var(--income);
+  --color-income-subtle: var(--income-subtle);
+  --color-income-fg: var(--income-fg);
+  --color-expense: var(--expense);
+  --color-expense-subtle: var(--expense-subtle);
+  --color-expense-fg: var(--expense-fg);
+  --color-saving: var(--saving);
+  --color-saving-subtle: var(--saving-subtle);
+  --color-saving-fg: var(--saving-fg);
+  --color-transfer: var(--transfer);
+  --color-transfer-subtle: var(--transfer-subtle);
+  --color-transfer-fg: var(--transfer-fg);
+  --color-gain: var(--gain);
+  --color-loss: var(--loss);
+
+  /* 숫자 전용 타이포 스케일 (tabular-nums 필수) */
+  --text-amount-hero: clamp(1.9rem, 1.4rem + 2vw, 2.4rem);
+  --text-amount-lg: 1.5rem;
+  --text-amount-md: 1.0625rem;
+  --text-amount-sm: 0.9375rem;
 }
 
 :root {
@@ -81,6 +109,41 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+
+  /* ── 모던 원장: 종이 켜 표면 + 의미 색 4종 (docs/UI.md §6) ── */
+  --surface: oklch(98% 0.005 90);
+  --surface-raised: oklch(100% 0 0);
+  --surface-sunken: oklch(95.5% 0.006 90);
+  --hairline: oklch(90% 0.008 90);
+  --ink: oklch(28% 0.04 260);
+  --ink-muted: oklch(52% 0.02 260);
+
+  --income: oklch(60% 0.14 160);
+  --income-subtle: oklch(95% 0.035 160);
+  --income-fg: oklch(42% 0.12 160);
+  --expense: oklch(58% 0.19 20);
+  --expense-subtle: oklch(95.5% 0.03 20);
+  --expense-fg: oklch(44% 0.16 20);
+  --saving: oklch(58% 0.17 300);
+  --saving-subtle: oklch(95.5% 0.035 300);
+  --saving-fg: oklch(44% 0.15 300);
+  --transfer: oklch(58% 0.15 250);
+  --transfer-subtle: oklch(95.5% 0.03 250);
+  --transfer-fg: oklch(44% 0.13 250);
+
+  /* 증감 (투자·손익 전용 — 유형 색과 분리) */
+  --gain: var(--income);
+  --loss: var(--expense);
+
+  /* 간격·터치·내비 */
+  --space-row: 0.875rem;
+  --touch-target: 44px;
+  --nav-height: 56px;
+
+  /* 모션 */
+  --duration-fast: 150ms;
+  --duration-normal: 250ms;
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .dark {
@@ -115,6 +178,27 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+
+  /* 다크: 의미 색 채도·명도 보정 (docs/UI.md §6) */
+  --surface: oklch(19% 0.01 260);
+  --surface-raised: oklch(23% 0.012 260);
+  --surface-sunken: oklch(16% 0.01 260);
+  --hairline: oklch(32% 0.012 260);
+  --ink: oklch(92% 0.01 260);
+  --ink-muted: oklch(70% 0.015 260);
+
+  --income: oklch(72% 0.14 160);
+  --income-subtle: oklch(30% 0.05 160);
+  --income-fg: oklch(80% 0.12 160);
+  --expense: oklch(72% 0.17 20);
+  --expense-subtle: oklch(30% 0.05 20);
+  --expense-fg: oklch(80% 0.14 20);
+  --saving: oklch(72% 0.15 300);
+  --saving-subtle: oklch(30% 0.05 300);
+  --saving-fg: oklch(80% 0.13 300);
+  --transfer: oklch(72% 0.13 250);
+  --transfer-subtle: oklch(30% 0.05 250);
+  --transfer-fg: oklch(80% 0.12 250);
 }
 
 @layer base {
@@ -132,4 +216,19 @@
 /* ₩ symbol in monospace contexts: use sans font and slightly smaller size */
 .font-mono {
   font-variant-numeric: tabular-nums;
+}
+
+/* 금액 표기 공통: 숫자는 항상 tabular */
+.amount {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
