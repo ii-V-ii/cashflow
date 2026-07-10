@@ -27,10 +27,14 @@ export const ALLOWED_RPC_FUNCTIONS = [
   "create_transaction",
   "update_transaction",
   "delete_transaction",
+  // Phase 2D 정기거래 (구현됨)
+  "create_recurring",
+  "update_recurring",
+  "delete_recurring",
+  "process_due_transactions",
   // 이후 트랙 (docs/DB.md §3 — 마이그레이션 미랜딩)
   "create_investment_trade",
   "delete_investment_trade",
-  "process_due_transactions",
   "snapshot_asset_valuations",
   "get_dashboard",
   "get_monthly_settlement",

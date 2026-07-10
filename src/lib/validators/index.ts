@@ -3,6 +3,7 @@
  */
 export * from "./common"
 export * from "./transaction"
+export * from "./recurring"
 export * from "./account"
 export * from "./category"
 export * from "./tag"

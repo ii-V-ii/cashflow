@@ -12,11 +12,12 @@ import {
 const MONTH_STALE_TIME_MS = 30_000
 
 /** 월 원장 (낙관적 업데이트 대상 캐시 — ARCHITECTURE.md §6.2, §7) */
-export function useTransactionsMonth(ym: string) {
+export function useTransactionsMonth(ym: string, enabled = true) {
   return useQuery({
     queryKey: qk.transactions.month(ym),
     queryFn: () => getTransactionsMonth(ym),
     staleTime: MONTH_STALE_TIME_MS,
+    enabled,
   })
 }
 

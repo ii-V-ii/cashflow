@@ -6,6 +6,7 @@
 
 export type TransactionType = "income" | "expense" | "transfer"
 export type TransactionStatus = "pending" | "applied"
+export type RecurringFrequency = "daily" | "weekly" | "monthly" | "yearly"
 export type AccountType = "cash" | "bank" | "card" | "savings" | "investment"
 export type ExpenseKind = "consumption" | "saving"
 

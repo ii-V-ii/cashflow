@@ -73,7 +73,14 @@ export function mapApiError(
       : { status: 404, code: "NOT_FOUND", message: "참조한 자원이 존재하지 않습니다" }
   }
 
-  if (code === "23514" || code === "22P02" || code === "23505") {
+  // 22008/22007 = 날짜/시간 범위·형식 오류 (예: '2026-02-30'::date) — 검증 우회 방어
+  if (
+    code === "23514" ||
+    code === "22P02" ||
+    code === "23505" ||
+    code === "22008" ||
+    code === "22007"
+  ) {
     return {
       status: 400,
       code: "VALIDATION_ERROR",

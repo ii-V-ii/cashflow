@@ -1,6 +1,7 @@
 import type {
   AccountType,
   ExpenseKind,
+  RecurringFrequency,
   TransactionStatus,
   TransactionType,
 } from "@/types"
@@ -87,6 +88,31 @@ export interface CategoryDto {
 }
 
 export type CategoryTreeDto = CategoryDto & { children: CategoryDto[] }
+
+/** Recurring DTO (API.md §12.1) — recurring_json과 1:1 */
+export interface RecurringDto {
+  id: string
+  type: TransactionType
+  amount: number
+  description: string
+  categoryId: string | null
+  accountId: string
+  toAccountId: string | null
+  frequency: RecurringFrequency
+  interval: number
+  startDate: string
+  endDate: string | null
+  nextDate: string
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+/** POST /recurring/process 응답 (API.md §12.6) */
+export interface RecurringProcessResultDto {
+  processed: number
+  generatedThrough: string
+}
 
 export interface PageDto<T> {
   items: T[]
