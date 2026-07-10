@@ -124,6 +124,22 @@ describe("GET /api/v1/export/transactions", () => {
     expect(lines[1]).toContain("급여")
   })
 
+  test("할부 회차 누락(installment_current null) → 1회차로 표기", async () => {
+    const [bank] = await sql`
+      INSERT INTO accounts (name, type, initial_balance, sort_order)
+      VALUES ('할부은행', 'bank', 0, 0) RETURNING id
+    `
+    await sql`
+      INSERT INTO transactions (type, amount, description, date, account_id, installment_months)
+      VALUES ('expense', 60000, '할부만', '2026-07-03', ${bank.id as string}, 6)
+    `
+
+    const response = await exportTransactions(csvRequest())
+    const lines = (await response.text()).trimEnd().split("\n")
+
+    expect(lines[1].endsWith(",1/6")).toBe(true)
+  })
+
   test("거래 없음 → 헤더만", async () => {
     const response = await exportTransactions(csvRequest())
     const text = (await response.text()).trimEnd()

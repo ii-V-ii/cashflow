@@ -213,3 +213,24 @@ describe("projectCashflow", () => {
     expect(result[1].projectedExpense).toBe(495000) // 500000 × 0.99
   })
 })
+
+describe("countOccurrencesInMonth daily 경계 (커버리지 보강)", () => {
+  it("interval 1 — 월 전체 일수를 그대로 센다", () => {
+    // nextDate가 월 시작보다 앞 → 2월(28일) 전체
+    expect(countOccurrencesInMonth("2026-01-15", "daily", 1, "2026-02-01", "2026-02-28")).toBe(28)
+  })
+
+  it("월 범위가 nextDate보다 앞이면 0", () => {
+    expect(countOccurrencesInMonth("2026-03-05", "daily", 3, "2026-02-01", "2026-02-28")).toBe(0)
+  })
+
+  it("interval>1 — 나머지 보정으로 첫 발생일을 찾는다", () => {
+    // 2026-01-03 시작 3일 간격 → 2월 첫 발생 02-02, 이후 05,08,…,26 = 9회
+    expect(countOccurrencesInMonth("2026-01-03", "daily", 3, "2026-02-01", "2026-02-28")).toBe(9)
+  })
+
+  it("interval>1 — 보정된 첫 발생일이 월말을 넘으면 0", () => {
+    // 01-31 시작 60일 간격 → 다음 발생 04-01, 3월 범위엔 없음
+    expect(countOccurrencesInMonth("2026-01-31", "daily", 60, "2026-03-01", "2026-03-31")).toBe(0)
+  })
+})

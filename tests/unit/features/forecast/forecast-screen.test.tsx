@@ -133,6 +133,16 @@ describe("ForecastScreen", () => {
     expect(screen.getByText(/예측을 실행/)).toBeInTheDocument()
   })
 
+  it("삭제 버튼 → 확인 다이얼로그 → remove.mutate", () => {
+    render(<ForecastScreen />)
+
+    fireEvent.click(screen.getByLabelText("보수적 삭제"))
+    expect(screen.getByText("시나리오를 삭제할까요?")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "삭제" }))
+    expect(removeMutate).toHaveBeenCalledWith(SCENARIOS[1].id, expect.anything())
+  })
+
   it("생성 폼 저장 → create.mutate", () => {
     render(<ForecastScreen />)
 

@@ -1,4 +1,4 @@
-import { afterAll, beforeEach, describe, expect, test, vi } from "vitest"
+import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vitest"
 
 const getAuthUserMock = vi.fn(async () => ({
   id: "test-user",
@@ -227,6 +227,35 @@ describe("PATCH /api/v1/forecast/scenarios/{id}", () => {
     )
     expect(response.status).toBe(400)
   })
+
+  test("시작일만 당겨 120개월 초과 조합 → 400 + 롤백 (validator 우회 차단)", async () => {
+    // 생성 시점엔 119개월로 유효
+    const { body: created } = await createScenario({
+      startDate: "2030-01-01",
+      endDate: "2039-12-01",
+    })
+    const id = created.data.id as string
+
+    // startDate만 PATCH — Zod refine은 한쪽 필드만 오면 통과하므로 서비스 재검증이 막아야 한다
+    const response = await patchScenario(
+      jsonRequest(`/api/v1/forecast/scenarios/${id}`, "PATCH", {
+        startDate: "2020-01-01",
+      }),
+      idParams(id),
+    )
+    const body = await response.json()
+
+    expect(response.status).toBe(400)
+    expect(body.error.code).toBe("VALIDATION_ERROR")
+
+    // 트랜잭션 롤백 — 시나리오는 원래 값 유지
+    const after = await getScenario(
+      jsonRequest(`/api/v1/forecast/scenarios/${id}`, "GET"),
+      idParams(id),
+    )
+    const afterBody = await after.json()
+    expect(afterBody.data.startDate).toBe("2030-01-01")
+  })
 })
 
 describe("DELETE /api/v1/forecast/scenarios/{id}", () => {
@@ -328,6 +357,25 @@ describe("POST /api/v1/forecast/run", () => {
     })
   })
 
+  test("자산 연결 계좌(asset_id 有)는 시작 잔액에서 제외 — 이중 계상 방지", async () => {
+    await seedHistory()
+    // 자산 연결 계좌 500만원 — asset_values_v에서 집계될 몫이므로 현금 잔액에서 제외
+    await sql`
+      INSERT INTO accounts (name, type, initial_balance, sort_order, asset_id)
+      VALUES ('연금계좌', 'investment', 5000000, 9,
+              '33333333-3333-4333-8333-333333333333')
+    `
+    const { body: created } = await createScenario()
+
+    const response = await runForecast(
+      jsonRequest("/api/v1/forecast/run", "POST", { scenarioId: created.data.id }),
+    )
+    const body = await response.json()
+
+    // 시작 잔액 2,100,000 (연금계좌 5,000,000 미포함) + 월 순이익 2,000,000
+    expect(body.data.results[0].projectedCashflow).toBe(2100000 + 2000000)
+  })
+
   test("없는 시나리오 → 404", async () => {
     const response = await runForecast(
       jsonRequest("/api/v1/forecast/run", "POST", {
@@ -385,5 +433,90 @@ describe("GET /api/v1/forecast/results", () => {
       jsonRequest("/api/v1/forecast/results", "GET"),
     )
     expect(response.status).toBe(400)
+  })
+})
+
+/**
+ * 정기·자산 트랙 병합 후 활성화될 피처 감지(loadRunInputs)의 "존재" 분기 검증.
+ * 실제 트랙 테이블이 이미 있으면(병합 후) 픽스처 생성을 건너뛰고 그대로 사용하지 않고
+ * 스킵한다 — 스키마 드리프트로 인한 오탐 방지. 미존재 시 서비스가 조회하는 최소
+ * 스키마만 생성 후 정리한다.
+ */
+describe("POST /api/v1/forecast/run — 정기·자산 입력 반영 (피처 감지)", () => {
+  let createdFixtures = false
+
+  beforeAll(async () => {
+    const [flags] = await sql`
+      SELECT to_regclass('public.recurring_transactions') IS NOT NULL AS has_recurring,
+             to_regclass('public.asset_values_v') IS NOT NULL AS has_assets
+    `
+    if (flags.has_recurring || flags.has_assets) return
+
+    await sql`
+      CREATE TABLE public.recurring_transactions (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        type text NOT NULL, amount bigint NOT NULL,
+        frequency text NOT NULL, recur_interval integer NOT NULL DEFAULT 1,
+        start_date date NOT NULL, end_date date, next_date date NOT NULL,
+        is_active boolean NOT NULL DEFAULT true
+      )
+    `
+    await sql`
+      CREATE TABLE public.asset_categories (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(), name text NOT NULL
+      )
+    `
+    await sql`
+      CREATE TABLE public.assets (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(), name text NOT NULL,
+        asset_category_id uuid NOT NULL REFERENCES public.asset_categories(id),
+        is_active boolean NOT NULL DEFAULT true, current_value bigint NOT NULL
+      )
+    `
+    await sql`
+      CREATE VIEW public.asset_values_v AS
+      SELECT id AS asset_id, current_value, is_active FROM public.assets
+    `
+    createdFixtures = true
+  })
+
+  afterAll(async () => {
+    if (!createdFixtures) return
+    await sql`DROP VIEW IF EXISTS public.asset_values_v`
+    await sql`DROP TABLE IF EXISTS public.assets`
+    await sql`DROP TABLE IF EXISTS public.asset_categories`
+    await sql`DROP TABLE IF EXISTS public.recurring_transactions`
+  })
+
+  test("정기 수입과 자산 현재가치가 예측에 반영된다", async (ctx) => {
+    if (!createdFixtures) return ctx.skip() // 실제 트랙 병합 후엔 해당 트랙 테스트가 담당
+
+    await seedHistory()
+    await sql`
+      INSERT INTO recurring_transactions
+        (type, amount, frequency, recur_interval, start_date, next_date)
+      VALUES ('income', 500000, 'monthly', 1,
+              ${`${shiftYm(-12)}-01`}, ${`${shiftYm(0)}-01`})
+    `
+    const [category] = await sql`
+      INSERT INTO asset_categories (name) VALUES ('금융자산') RETURNING id
+    `
+    await sql`
+      INSERT INTO assets (name, asset_category_id, current_value)
+      VALUES ('펀드', ${category.id as string}, 10000000)
+    `
+    const { body: created } = await createScenario()
+
+    const response = await runForecast(
+      jsonRequest("/api/v1/forecast/run", "POST", { scenarioId: created.data.id }),
+    )
+    const body = await response.json()
+    const [first] = body.data.results
+
+    expect(response.status).toBe(200)
+    // 이력 평균 300만 + 정기 수입 50만
+    expect(first.projectedIncome).toBe(3500000)
+    // 순자산 = 누적 현금 + 자산 투영(monthIndex 0 → 현재가치 그대로)
+    expect(first.projectedNetWorth).toBe(first.projectedCashflow + 10000000)
   })
 })
