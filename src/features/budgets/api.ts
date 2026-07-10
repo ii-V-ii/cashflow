@@ -15,8 +15,17 @@ import type {
   BudgetYearSummaryDto,
 } from "@/types/api"
 
+/** 쿼리스트링 조립 — 거래 api.ts의 toSearchParams 관례 (리뷰 LOW) */
+function toSearchParams(params: Record<string, number | string | undefined>): string {
+  const searchParams = new URLSearchParams()
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined) searchParams.set(key, String(value))
+  }
+  return searchParams.toString()
+}
+
 export function getBudgets(year: number): Promise<BudgetSummaryItemDto[]> {
-  return apiFetch(`/api/v1/budgets?year=${year}`)
+  return apiFetch(`/api/v1/budgets?${toSearchParams({ year })}`)
 }
 
 export function createBudget(input: CreateBudgetInput): Promise<BudgetDto> {
@@ -49,11 +58,11 @@ export function copyBudget(input: CopyBudgetInput): Promise<BudgetDto> {
 }
 
 export function getBudgetActuals(year: number, month: number): Promise<BudgetActualsDto> {
-  return apiFetch(`/api/v1/budgets/actuals?year=${year}&month=${month}`)
+  return apiFetch(`/api/v1/budgets/actuals?${toSearchParams({ year, month })}`)
 }
 
 export function getAnnualGrid(year: number): Promise<AnnualGridDto> {
-  return apiFetch(`/api/v1/budgets/annual-grid?year=${year}`)
+  return apiFetch(`/api/v1/budgets/annual-grid?${toSearchParams({ year })}`)
 }
 
 export function upsertAnnualGridCell(
@@ -66,5 +75,5 @@ export function upsertAnnualGridCell(
 }
 
 export function getBudgetSummary(year: number): Promise<BudgetYearSummaryDto> {
-  return apiFetch(`/api/v1/budgets/summary?year=${year}`)
+  return apiFetch(`/api/v1/budgets/summary?${toSearchParams({ year })}`)
 }

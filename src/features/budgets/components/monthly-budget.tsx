@@ -181,7 +181,8 @@ export function MonthlyBudget({
         </div>
       ) : (
         <>
-          {budget === undefined && (
+          {/* 목록 재조회 중에는 숨김 — 저장 직후 잔상 CTA 오클릭 방지 */}
+          {budget === undefined && !budgetsQuery.isFetching && (
             <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-hairline bg-surface-raised px-4 py-6 text-center">
               <p className="text-sm font-medium text-ink">
                 {year}년 {month}월 예산이 아직 없습니다

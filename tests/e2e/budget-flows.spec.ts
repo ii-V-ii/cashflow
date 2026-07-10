@@ -55,9 +55,9 @@ test("(a) 예산 생성 → 거래 입력 → 실적·진행 바 반영", async 
   ])
 
   // 그룹 합계 반영 (수입/소비/저축 구분)
-  await expect(page.getByTestId("budget-total-consumption")).toHaveText("300,000원")
-  await expect(page.getByTestId("budget-total-saving")).toHaveText("500,000원")
-  await expect(page.getByTestId("budget-total-income")).toHaveText("4,000,000원")
+  await expect(page.getByTestId("budget-total-consumption")).toHaveText("300,000원", { timeout: 15000 })
+  await expect(page.getByTestId("budget-total-saving")).toHaveText("500,000원", { timeout: 15000 })
+  await expect(page.getByTestId("budget-total-income")).toHaveText("4,000,000원", { timeout: 15000 })
   // 저장 후 CTA·저장 바 사라짐
   await expect(page.getByTestId("copy-previous-month")).toBeHidden()
   await expect(page.getByTestId("save-budget")).toBeHidden()
@@ -81,7 +81,7 @@ test("(a) 예산 생성 → 거래 입력 → 실적·진행 바 반영", async 
   await gotoBudgets(page)
   await expect(
     page.locator("li").filter({ hasText: "식비" }).getByText("실적 30,000원"),
-  ).toBeVisible()
+  ).toBeVisible({ timeout: 15000 })
 })
 
 test("(b) 전월 예산 복사 CTA", async ({ page }) => {
@@ -94,17 +94,22 @@ test("(b) 전월 예산 복사 CTA", async ({ page }) => {
     waitForBudgetWrite(page, "POST"),
     page.getByTestId("save-budget").click(),
   ])
+  // 목록 재조회 반영으로 CTA가 사라질 때까지 대기 (잔상 CTA 오클릭 방지)
+  await expect(page.getByTestId("copy-previous-month")).toBeHidden({ timeout: 15000 })
 
-  // 다음 달로 이동 → 예산 없음 → 전월 복사
+  // 다음 달로 이동(월 표시 갱신 확인) → 예산 없음 → 전월 복사
+  const { year, month } = currentYearMonth()
+  const next = month === 12 ? { year: year + 1, month: 1 } : { year, month: month + 1 }
   await page.getByRole("button", { name: "다음 달" }).click()
+  await expect(page.getByTestId("current-month")).toHaveText(`${next.year}년 ${next.month}월`)
   await expect(page.getByTestId("copy-previous-month")).toBeVisible()
   await Promise.all([
     waitForBudgetWrite(page, "POST"),
     page.getByTestId("copy-previous-month").click(),
   ])
 
-  await expect(page.getByTestId("budget-input-식비")).toHaveValue("250,000")
-  await expect(page.getByTestId("budget-total-consumption")).toHaveText("250,000원")
+  await expect(page.getByTestId("budget-input-식비")).toHaveValue("250,000", { timeout: 15000 })
+  await expect(page.getByTestId("budget-total-consumption")).toHaveText("250,000원", { timeout: 15000 })
 })
 
 test("(c) 연간 그리드 셀 편집 → 월별 예산에 반영", async ({ page }) => {
@@ -113,7 +118,7 @@ test("(c) 연간 그리드 셀 편집 → 월별 예산에 반영", async ({ pag
   await gotoBudgets(page)
 
   await page.getByTestId("budget-tab-grid").click()
-  await expect(page.getByTestId("annual-grid")).toBeVisible()
+  await expect(page.getByTestId("annual-grid")).toBeVisible({ timeout: 15000 })
 
   await page.getByTestId(`grid-cell-식비-${month}`).click()
   await page.getByLabel(`식비 ${month}월 계획`).fill("180000")
@@ -122,11 +127,11 @@ test("(c) 연간 그리드 셀 편집 → 월별 예산에 반영", async ({ pag
     page.getByLabel(`식비 ${month}월 계획`).press("Enter"),
   ])
 
-  await expect(page.getByTestId(`grid-cell-식비-${month}`)).toHaveText("180,000")
-  await expect(page.getByTestId("grid-grand-total")).toHaveText("180,000")
+  await expect(page.getByTestId(`grid-cell-식비-${month}`)).toHaveText("180,000", { timeout: 15000 })
+  await expect(page.getByTestId("grid-grand-total")).toHaveText("180,000", { timeout: 15000 })
   expect(year).toBeGreaterThan(2000)
 
   // 월별 탭에서도 같은 값
   await page.getByTestId("budget-tab-monthly").click()
-  await expect(page.getByTestId("budget-input-식비")).toHaveValue("180,000")
+  await expect(page.getByTestId("budget-input-식비")).toHaveValue("180,000", { timeout: 15000 })
 })

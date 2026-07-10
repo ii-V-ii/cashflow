@@ -43,6 +43,38 @@ CREATE TRIGGER trg_budget_items_updated_at
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
 -- ============================================================
+-- 1.5 카테고리 깊이 불변식 (리뷰 HIGH2)
+--     Phase 1 API가 2단계 제한(MAX_DEPTH_EXCEEDED)을 검증하지만 DB 불변식이 없었다.
+--     예산 롤업(COALESCE(parent_id, id))·실적 부착 규칙이 깊이 2를 전제하므로
+--     DB 차원에서 고정한다. ERRCODE 23514(check_violation) → API 400 VALIDATION_ERROR.
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION public.enforce_category_depth()
+RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path = public AS $$
+BEGIN
+  IF NEW.parent_id IS NOT NULL THEN
+    -- 부모가 이미 소분류면 깊이 3 → 금지
+    IF EXISTS (
+      SELECT 1 FROM categories p
+      WHERE p.id = NEW.parent_id AND p.parent_id IS NOT NULL
+    ) THEN
+      RAISE EXCEPTION '카테고리는 최대 2단계까지만 허용됩니다'
+        USING ERRCODE = '23514';
+    END IF;
+    -- 자식을 가진 대분류를 소분류로 강등해도 깊이 3 → 금지
+    IF EXISTS (SELECT 1 FROM categories c WHERE c.parent_id = NEW.id) THEN
+      RAISE EXCEPTION '하위 분류가 있는 카테고리는 소분류로 바꿀 수 없습니다'
+        USING ERRCODE = '23514';
+    END IF;
+  END IF;
+  RETURN NEW;
+END $$;
+
+CREATE TRIGGER trg_categories_max_depth
+  BEFORE INSERT OR UPDATE OF parent_id ON public.categories
+  FOR EACH ROW EXECUTE FUNCTION public.enforce_category_depth();
+
+-- ============================================================
 -- 2. budget_totals_v — 예산 합계 (DB.md §2.4)
 --    같은 예산 안에 소분류 항목이 존재하는 대분류 항목은 합계에서 제외(중복 방지).
 -- ============================================================
@@ -92,7 +124,8 @@ LANGUAGE sql STABLE SECURITY INVOKER SET search_path = public AS $$
           'expenseKind', c.expense_kind, 'parentId', c.parent_id),
         'plannedAmount', bi.planned_amount,
         'memo', bi.memo)
-        ORDER BY c.type, c.sort_order, c.name)
+        -- 수입 항목 우선 정렬 (리뷰 L9 — UI 관례: 수입 → 지출)
+        ORDER BY c.type DESC, c.sort_order, c.name)
       FROM budget_items bi
       JOIN categories c ON c.id = bi.category_id
       WHERE bi.budget_id = b.id), '[]'::jsonb),
@@ -327,7 +360,8 @@ SELECT jsonb_build_object(
       'actualAmount', i.actual_amount,
       'difference', i.difference,
       'achievementRate', i.achievement_rate)
-      ORDER BY i.type, i.planned_amount DESC, i.category_name)
+      -- budget_json과 동일한 수입 우선 정렬 (리뷰 L9)
+      ORDER BY i.type DESC, i.planned_amount DESC, i.category_name)
     FROM items i), '[]'::jsonb),
   'totals', jsonb_build_object(
     'plannedIncome',  COALESCE((SELECT v.total_income  FROM budget_totals_v v WHERE v.budget_id = (SELECT id FROM b)), 0),
@@ -465,7 +499,8 @@ $$;
 -- ============================================================
 
 CREATE INDEX idx_budgets_year             ON public.budgets (year);
-CREATE INDEX idx_budget_items_budget_id   ON public.budget_items (budget_id);
+-- idx_budget_items_budget_id 생략(리뷰 M3): uq_budget_items_budget_category 인덱스가
+-- budget_id 선두 컬럼으로 동일 스캔을 커버한다 (DB.md §4 목록 대비 의도적 축소).
 CREATE INDEX idx_budget_items_category_id ON public.budget_items (category_id);
 
 -- ============================================================

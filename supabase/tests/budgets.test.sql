@@ -4,7 +4,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(44);
+select plan(53);
 
 -- ── 테이블/컬럼 ─────────────────────────────────────────────
 select has_table('public'::name, 'budgets'::name);
@@ -51,10 +51,15 @@ select is(
                       'get_annual_grid','get_budget_summary','budget_json')),
   false, 'all budget functions are SECURITY INVOKER');
 
--- ── 인덱스 (DB.md §4) ────────────────────────────────────────
+-- ── 인덱스 (DB.md §4, 리뷰 M3: budget_id 단독 인덱스는 uq 제약 인덱스가 커버) ──
 select has_index('public'::name, 'budgets'::name, 'idx_budgets_year'::name);
-select has_index('public'::name, 'budget_items'::name, 'idx_budget_items_budget_id'::name);
 select has_index('public'::name, 'budget_items'::name, 'idx_budget_items_category_id'::name);
+
+-- ── 카테고리 깊이 불변식 트리거 (리뷰 HIGH2) ──────────────────
+select ok(exists(select 1 from pg_trigger
+  where tgname = 'trg_categories_max_depth'
+    and tgrelid = 'public.categories'::regclass),
+  'trg_categories_max_depth exists on categories');
 
 -- ── RLS (DB.md §5) ──────────────────────────────────────────
 select ok((select relrowsecurity from pg_class where oid = 'public.budgets'::regclass),
@@ -75,6 +80,13 @@ select ok(has_function_privilege('authenticated', 'public.get_budget_actuals(int
   'authenticated can execute get_budget_actuals');
 
 -- ── 동작: 시드 ───────────────────────────────────────────────
+-- 자립성 보장: 통합 테스트 등이 남긴 커밋 데이터와의 충돌 제거
+-- (트랜잭션 내 DELETE — 마지막 rollback으로 원복되므로 안전)
+delete from public.budget_items;
+delete from public.budgets;
+delete from public.transaction_tags;
+delete from public.transactions;
+
 insert into public.categories (id, name, type, expense_kind, sort_order) values
   ('11111111-1111-4111-8111-111111111111', '식비', 'expense', 'consumption', 0),
   ('33333333-3333-4333-8333-333333333333', '저축', 'expense', 'saving', 1),
@@ -85,6 +97,17 @@ insert into public.categories (id, name, type, expense_kind, parent_id, sort_ord
 insert into public.accounts (id, name, type, initial_balance) values
   ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '은행', 'bank', 1000000),
   ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', '적금', 'savings', 0);
+
+-- ── 동작: 카테고리 깊이 2 초과 금지 (리뷰 HIGH2) ─────────────
+select throws_ok(
+  $q$insert into public.categories (name, type, expense_kind, parent_id)
+     values ('3단계', 'expense', 'consumption', '22222222-2222-4222-8222-222222222222')$q$,
+  '23514', null, 'inserting a child under a child (depth 3) raises 23514');
+select throws_ok(
+  $q$update public.categories
+       set parent_id = '33333333-3333-4333-8333-333333333333'
+     where id = '11111111-1111-4111-8111-111111111111'$q$,
+  '23514', null, 'demoting a parent that has children raises 23514');
 
 -- ── 동작: create_budget + CF409 ─────────────────────────────
 select lives_ok(
@@ -118,7 +141,8 @@ insert into public.transactions (type, amount, description, status, category_id,
   ('expense', 40000, '외식', 'applied', '22222222-2222-4222-8222-222222222222', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', null, '2026-03-05'),
   ('expense', 99999, '외식 pending', 'pending', '22222222-2222-4222-8222-222222222222', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', null, '2026-03-06'),
   ('expense', 200000, '저축', 'applied', '33333333-3333-4333-8333-333333333333', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', '2026-03-07'),
-  ('transfer', 500000, '이체', 'applied', null, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', '2026-03-08');
+  ('transfer', 500000, '이체', 'applied', null, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', '2026-03-08'),
+  ('expense', 7000, '미분류 지출', 'applied', null, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', null, '2026-03-09');
 
 -- 소분류(외식)에 자기 항목이 있으므로 실적 40000은 외식 항목에 붙는다
 select is(
@@ -137,10 +161,39 @@ select is(
      from jsonb_array_elements(public.get_budget_actuals(2026, 3)->'items') item
     where item->>'categoryId' = '33333333-3333-4333-8333-333333333333'),
   200000::bigint, 'saving transaction counts as expense actual');
--- transfer/pending은 지출 실적 총계에서 제외
+-- 미분류(category_id NULL) 거래 — '미분류' 가상 항목으로 포함 (리뷰 HIGH1: 현행 유지, shape 고정)
+select is(
+  (select item->'categoryId'
+     from jsonb_array_elements(public.get_budget_actuals(2026, 3)->'items') item
+    where item->>'categoryName' = '미분류'),
+  'null'::jsonb, 'uncategorized actual keeps categoryId null in output shape');
+select is(
+  (select (item->>'actualAmount')::bigint
+     from jsonb_array_elements(public.get_budget_actuals(2026, 3)->'items') item
+    where item->>'categoryName' = '미분류'),
+  7000::bigint, 'uncategorized actual becomes virtual item (planned 0, 결산 합계와 일치)');
+-- transfer/pending은 지출 실적 총계에서 제외, 미분류는 포함
 select is(
   (public.get_budget_actuals(2026, 3)->'totals'->>'actualExpense')::bigint,
-  240000::bigint, 'actualExpense = applied income/expense only (transfer/pending 제외)');
+  247000::bigint, 'actualExpense = applied income/expense only (transfer/pending 제외, 미분류 포함)');
+
+-- ── 동작: get_annual_grid — 그룹 롤업·부모 제외·월 배열 (리뷰 L10) ──
+select is(
+  jsonb_array_length(public.get_annual_grid(2026, 'expense', null)->'groups'),
+  1, 'annual grid: expense filter yields 식비 group only');
+select is(
+  jsonb_array_length(public.get_annual_grid(2026, 'expense', null)->'groups'->0->'months'),
+  12, 'annual grid: group months is a 12-element array');
+-- 3월: 소분류(외식 100000) 항목이 있으므로 대분류(식비 300000)는 그룹 월합계에서 제외
+select is(
+  (public.get_annual_grid(2026, 'expense', null)->'groups'->0->'months'->>2)::bigint,
+  100000::bigint, 'annual grid: month with child items sums children only (parent excluded)');
+select is(
+  (public.get_annual_grid(2026, null, null)->>'grandTotal')::bigint,
+  5100000::bigint, 'annual grid grandTotal = 외식 100000 + 급여 5000000');
+select is(
+  (public.get_annual_grid(2026, null, 'saving')->>'grandTotal')::bigint,
+  0::bigint, 'annual grid expense_kind filter (saving 항목 없음 → 0)');
 
 -- ── 동작: update_budget CF404 / copy_budget CF404 ───────────
 select throws_ok(

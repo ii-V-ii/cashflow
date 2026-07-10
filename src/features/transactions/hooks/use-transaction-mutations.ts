@@ -40,6 +40,10 @@ function invalidateTransactionScope(queryClient: QueryClient, ym: string): void 
   void queryClient.invalidateQueries({ queryKey: qk.dashboard.month(ym) })
   void queryClient.invalidateQueries({ queryKey: qk.settlements.monthly(ym) })
   void queryClient.invalidateQueries({ queryKey: qk.budgets.actuals(ym) })
+  // 연간 개요 차트(실적 축)도 거래 변경에 종속 (리뷰 MEDIUM)
+  void queryClient.invalidateQueries({
+    queryKey: qk.budgets.summary(Number(ym.slice(0, 4))),
+  })
 }
 
 async function snapshotAndCancel(queryClient: QueryClient, ym: string) {
