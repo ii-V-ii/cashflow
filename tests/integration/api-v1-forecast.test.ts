@@ -24,6 +24,7 @@ import { closeDb } from "@/server/db/client"
 
 import {
   createTestDb,
+  truncateAssetInvestmentCore,
   truncateForecast,
   truncateTransactionCore,
 } from "./helpers/db"
@@ -38,6 +39,7 @@ afterAll(async () => {
 beforeEach(async () => {
   getAuthUserMock.mockResolvedValue({ id: "test-user", email: "owner@local.test" })
   await truncateForecast(sql)
+  await truncateAssetInvestmentCore(sql)
   await truncateTransactionCore(sql)
 })
 
@@ -360,10 +362,18 @@ describe("POST /api/v1/forecast/run", () => {
   test("자산 연결 계좌(asset_id 有)는 시작 잔액에서 제외 — 이중 계상 방지", async () => {
     await seedHistory()
     // 자산 연결 계좌 500만원 — asset_values_v에서 집계될 몫이므로 현금 잔액에서 제외
+    // (2C 병합으로 fk_accounts_asset_id 가 부착됨 — 실제 자산 행을 먼저 생성)
+    const [assetCategory] = await sql`
+      INSERT INTO asset_categories (name, kind)
+      VALUES ('금융자산', 'financial') RETURNING id
+    `
+    const [asset] = await sql`
+      INSERT INTO assets (name, asset_category_id, acquisition_date, acquisition_cost)
+      VALUES ('연금', ${assetCategory.id}, '2026-01-01', 5000000) RETURNING id
+    `
     await sql`
       INSERT INTO accounts (name, type, initial_balance, sort_order, asset_id)
-      VALUES ('연금계좌', 'investment', 5000000, 9,
-              '33333333-3333-4333-8333-333333333333')
+      VALUES ('연금계좌', 'investment', 5000000, 9, ${asset.id})
     `
     const { body: created } = await createScenario()
 
@@ -374,6 +384,40 @@ describe("POST /api/v1/forecast/run", () => {
 
     // 시작 잔액 2,100,000 (연금계좌 5,000,000 미포함) + 월 순이익 2,000,000
     expect(body.data.results[0].projectedCashflow).toBe(2100000 + 2000000)
+  })
+
+  test("정기 수입·자산 현재가치가 실스키마에서 자동 반영된다 (피처 감지 활성)", async () => {
+    await seedHistory()
+    const [account] = await sql`SELECT id FROM accounts WHERE name = '예측은행'`
+    await sql`
+      INSERT INTO recurring_transactions
+        (type, amount, description, account_id, frequency, recur_interval,
+         start_date, next_date)
+      VALUES ('income', 500000, '정기수입', ${account.id}, 'monthly', 1,
+              ${`${shiftYm(-12)}-01`}, ${`${shiftYm(0)}-01`})
+    `
+    const [assetCategory] = await sql`
+      INSERT INTO asset_categories (name, kind)
+      VALUES ('금융자산', 'financial') RETURNING id
+    `
+    // 연동 계좌·평가이력 없음 → asset_values_v 는 취득원가 10,000,000 으로 평가
+    await sql`
+      INSERT INTO assets (name, asset_category_id, acquisition_date, acquisition_cost)
+      VALUES ('펀드', ${assetCategory.id}, '2026-01-01', 10000000)
+    `
+    const { body: created } = await createScenario()
+
+    const response = await runForecast(
+      jsonRequest("/api/v1/forecast/run", "POST", { scenarioId: created.data.id }),
+    )
+    const body = await response.json()
+    const [first] = body.data.results
+
+    expect(response.status).toBe(200)
+    // 이력 평균 300만 + 정기 수입 50만
+    expect(first.projectedIncome).toBe(3500000)
+    // 순자산 = 누적 현금 + 자산 투영(monthIndex 0 → 현재가치 그대로)
+    expect(first.projectedNetWorth).toBe(first.projectedCashflow + 10000000)
   })
 
   test("없는 시나리오 → 404", async () => {

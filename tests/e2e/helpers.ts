@@ -20,7 +20,8 @@ export async function resetSeedData(): Promise<void> {
         public.budget_items, public.budgets,
         public.transaction_tags, public.transactions,
         public.recurring_transactions,
-        public.tags, public.accounts, public.categories
+        public.investment_trades, public.asset_valuations,
+        public.assets, public.asset_categories,
         public.tags, public.accounts, public.categories,
         public.forecast_results, public.forecast_scenarios
       CASCADE
