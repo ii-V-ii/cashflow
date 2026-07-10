@@ -60,9 +60,18 @@ function randomInt(rand: () => number, min: number, max: number): number {
   return min + Math.floor(rand() * (max - min + 1))
 }
 
-/** 소수 4자리 수량 (numeric(20,8) 범위 내, 이진 오차 없는 십진 값) */
+/**
+ * 소수 8자리 수량 — numeric(20,8) 전체 정밀도 경계를 친다.
+ * 최소값 1/1e8 = 0.00000001 포함. JSON 직렬화(shortest round-trip)와
+ * toFixed(8)이 같은 8자리 십진값을 재현하도록 8자리 고정 스케일 정수에서 생성.
+ */
 function randomQuantity(rand: () => number): number {
-  return randomInt(rand, 1, 200_000) / 10_000
+  return randomInt(rand, 1, 20_000_000_000) / 100_000_000
+}
+
+/** 임의 실수를 8자리 십진 수량으로 양자화 (PG·TS 양쪽에서 동일 표현 보장) */
+function quantize8(value: number): number {
+  return Number(value.toFixed(8))
 }
 
 function randomDate(rand: () => number): string {
@@ -210,11 +219,8 @@ function nextOp(
     const held = heldQuantity(ledger, assetId, ticker)
     const exceed = rand() < 0.15 || held === 0
     const quantity = exceed
-      ? held + randomQuantity(rand)
-      : Math.max(
-          0.0001,
-          Math.round(held * rand() * 10_000) / 10_000,
-        )
+      ? quantize8(held + randomQuantity(rand))
+      : Math.max(0.00000001, quantize8(held * rand()))
     const net = randomInt(rand, 0, 50_000_000)
     return {
       kind: "create",
@@ -223,7 +229,7 @@ function nextOp(
         ticker,
         tradeType: "sell",
         date,
-        quantity: Number(quantity.toFixed(4)),
+        quantity,
         unitPrice: 0,
         totalAmount: net,
         netAmount: net,
@@ -369,5 +375,9 @@ describe("FIFO 교차 검증 — TS 레퍼런스 == RPC (property-based)", () =>
 
   test("seed 20260713: 랜덤 매매 시퀀스 120연산 완전 일치", async () => {
     await runSequence(20260713, OPS_PER_SEED)
+  }, 60_000)
+
+  test("seed 7: 랜덤 매매 시퀀스 120연산 완전 일치 (8자리 정밀도 경계)", async () => {
+    await runSequence(7, OPS_PER_SEED)
   }, 60_000)
 })

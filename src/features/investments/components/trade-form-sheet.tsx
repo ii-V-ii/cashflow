@@ -46,9 +46,9 @@ function toInt(value: string): number {
 }
 
 /**
- * 매매 등록 시트 (PRD §3.8). 총액 = round(수량×단가),
- * 수령액(net) = 매수: 총액+수수료+세금 아님 — 도메인 규약:
- * buy: total_amount가 계좌에서 차감 / sell·dividend: net_amount(총액−수수료−세금)가 입금.
+ * 매매 등록 시트 (PRD §3.8). 총액 = round(수량×단가).
+ * net_amount 규약(DB.md §1.9): buy = 총액+수수료+세금(총 지출) /
+ * sell·dividend = 총액−수수료−세금(실수령). 계좌 효과는 buy −total, sell·dividend +net.
  */
 export function TradeFormSheet({
   open,
@@ -69,7 +69,9 @@ export function TradeFormSheet({
   const tax = toInt(form.tax)
   const totalAmount =
     form.tradeType === "dividend" ? unitPrice : Math.round(quantity * unitPrice)
-  const netAmount = Math.max(0, totalAmount - fee - tax)
+  const netAmount =
+    form.tradeType === "buy" ? totalAmount + fee + tax : totalAmount - fee - tax
+  const isNetNegative = netAmount < 0 // 수수료+세금 > 총액 — 저장 불가
 
   function set<K extends keyof TradeFormState>(key: K, value: TradeFormState[K]) {
     setForm((current) => ({ ...current, [key]: value }))
@@ -238,7 +240,7 @@ export function TradeFormSheet({
           type="submit"
           data-testid="save-trade"
           className="h-12 bg-ink text-surface-raised hover:bg-ink/90"
-          disabled={create.isPending || form.assetId === ""}
+          disabled={create.isPending || form.assetId === "" || isNetNegative}
         >
           {create.isPending ? "저장 중…" : "저장"}
         </Button>

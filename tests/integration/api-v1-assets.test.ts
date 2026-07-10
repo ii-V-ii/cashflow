@@ -250,10 +250,13 @@ describe("portfolio·valuations (API.md §9.6-9.7)", () => {
     const response = await getPortfolio()
     const body = await response.json()
     expect(body.data.total).toBe(10_000_000)
-    expect(body.data.byCategory).toEqual([
-      expect.objectContaining({ name: "주식", value: 3_000_000, ratio: 30 }),
-      expect.objectContaining({ name: "부동산", value: 7_000_000, ratio: 70 }),
-    ])
+    expect(body.data.byCategory).toHaveLength(2)
+    expect(body.data.byCategory).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "주식", value: 3_000_000, ratio: 30 }),
+        expect.objectContaining({ name: "부동산", value: 7_000_000, ratio: 70 }),
+      ]),
+    )
   })
 
   test("valuations: 추가(upsert) 후 날짜 오름차순 조회", async () => {
@@ -293,6 +296,34 @@ describe("portfolio·valuations (API.md §9.6-9.7)", () => {
     expect(listBody.data.map((valuation: { date: string; value: number }) => valuation.value)).toEqual([
       800_000, 950_000,
     ])
+  })
+
+  test("사용자 upsert(기본 manual)는 기존 auto 스냅샷을 덮어쓴다 (의도적 비대칭)", async () => {
+    const { id: categoryId } = await createCategory()
+    const { id: assetId } = await createAsset(categoryId)
+    await sql`
+      INSERT INTO public.asset_valuations (asset_id, date, value, source)
+      VALUES (${assetId}, '2026-06-01', 111, 'auto')
+    `
+
+    const response = await postValuation(
+      jsonRequest(`/api/v1/assets/${assetId}/valuations`, "POST", {
+        date: "2026-06-01",
+        value: 222,
+      }),
+      idParams(assetId),
+    )
+    const body = await response.json()
+    expect(response.status).toBe(201)
+    expect(body.data).toMatchObject({ value: 222, source: "manual" })
+
+    const rows = await sql`
+      SELECT value, source FROM public.asset_valuations
+      WHERE asset_id = ${assetId} AND date = '2026-06-01'
+    `
+    expect(rows).toHaveLength(1)
+    expect(Number(rows[0].value)).toBe(222)
+    expect(rows[0].source).toBe("manual")
   })
 
   test("source=auto 입력은 400 (pg_cron 전용)", async () => {

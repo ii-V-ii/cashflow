@@ -52,6 +52,10 @@ export interface FifoTradeInput {
   quantity: number
   unitPrice: number
   totalAmount: number
+  /** 기본 0 — RPC와 동일한 net_amount 정합 검증에 사용 */
+  fee?: number
+  /** 기본 0 — RPC와 동일한 net_amount 정합 검증에 사용 */
+  tax?: number
   netAmount: number
 }
 
@@ -75,10 +79,16 @@ const BIGINT_ZERO = BigInt(0)
 const BIGINT_ONE = BigInt(1)
 const BIGINT_TWO = BigInt(2)
 
+/** toFixed가 지수 표기로 전환되는 경계(1e21) — 초과 수량은 검증 에러로 차단 */
+const MAX_ABS_QUANTITY = 1e21
+
 /** 수량(number) → 소수 8자리 스케일 BigInt. 십진 문자열 경유로 이진 오차 제거 */
 function toScaledQty(value: number, label: string): bigint {
-  if (!Number.isFinite(value)) {
-    throw new FifoError("VALIDATION_ERROR", `${label}이(가) 유한수가 아닙니다: ${value}`)
+  if (!Number.isFinite(value) || Math.abs(value) >= MAX_ABS_QUANTITY) {
+    throw new FifoError(
+      "VALIDATION_ERROR",
+      `${label}이(가) 허용 범위를 벗어났습니다: ${value}`,
+    )
   }
   const fixed = value.toFixed(QTY_FRACTION_DIGITS) // "123.45678900"
   const negative = fixed.startsWith("-")
@@ -243,6 +253,20 @@ export function applyTrade(
   }
   if (toAmount(input.totalAmount, "총액") < BIGINT_ZERO || toAmount(input.netAmount, "순액") < BIGINT_ZERO) {
     throw new FifoError("VALIDATION_ERROR", "금액은 0 이상이어야 합니다")
+  }
+  // net_amount 규약(DB.md §1.9, RPC 서두 검증과 동일):
+  // buy = total + fee + tax / sell·dividend = total − fee − tax
+  const fee = input.fee ?? 0
+  const tax = input.tax ?? 0
+  const expectedNet =
+    input.tradeType === "buy"
+      ? input.totalAmount + fee + tax
+      : input.totalAmount - fee - tax
+  if (input.netAmount !== expectedNet) {
+    throw new FifoError(
+      "VALIDATION_ERROR",
+      "net_amount가 총액·수수료·세금 규약과 일치하지 않습니다",
+    )
   }
 
   if (input.tradeType === "buy") {

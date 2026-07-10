@@ -265,7 +265,12 @@ export async function listValuations(assetId: string): Promise<ValuationDto[]> {
   return rows.map(mapValuationRow)
 }
 
-/** POST /assets/{id}/valuations — 동일 날짜 upsert (API.md §9.7) */
+/**
+ * POST /assets/{id}/valuations — 동일 날짜 upsert (API.md §9.7).
+ * 사용자 행위(기본 source='manual')는 기존 auto/estimate/manual을 모두 덮어쓴다 —
+ * 자동 스냅샷(snapshot_asset_valuations)이 manual만 보존하는 가드와 의도적 비대칭
+ * (사용자 입력 > 자동값 우선순위).
+ */
 export async function createValuation(
   assetId: string,
   input: CreateValuationInput,

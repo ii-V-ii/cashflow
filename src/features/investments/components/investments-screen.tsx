@@ -2,7 +2,7 @@
 
 import { PlusIcon } from "lucide-react"
 import Link from "next/link"
-import { useState } from "react"
+import { useMemo, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
@@ -31,7 +31,10 @@ export function InvestmentsScreen() {
   const [tab, setTab] = useState<MainTab>("trades")
   const [assetFilter, setAssetFilter] = useState<string>("")
   const [page, setPage] = useState(1)
-  const filter = assetFilter ? { assetId: assetFilter } : {}
+  const filter = useMemo(
+    () => (assetFilter ? { assetId: assetFilter } : {}),
+    [assetFilter],
+  )
   const { data: assets = [] } = useAssets()
   const { data: trades, isPending } = useTrades(filter, page)
   const { remove } = useTradeMutations()

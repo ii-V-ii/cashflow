@@ -4,7 +4,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(48);
+select plan(51);
 
 -- ── 테이블 존재 ──────────────────────────────────────────────
 select has_table('public'::name, 'asset_categories'::name);
@@ -127,6 +127,20 @@ select is(
   (select has_column_privilege('authenticated', 'public.investment_trades',
      'realized_gain', 'UPDATE')),
   false, 'authenticated cannot UPDATE realized_gain');
+-- INSERT 위조 차단 (컬럼 제한형 GRANT INSERT)
+select is(
+  (select has_column_privilege('authenticated', 'public.investment_trades',
+     'remaining_quantity', 'INSERT')),
+  false, 'authenticated cannot INSERT remaining_quantity');
+select is(
+  (select has_column_privilege('authenticated', 'public.investment_trades',
+     'realized_gain', 'INSERT')),
+  false, 'authenticated cannot INSERT realized_gain');
+-- 허용 컬럼 INSERT는 유지 (기능 회귀 방지)
+select is(
+  (select has_column_privilege('authenticated', 'public.investment_trades',
+     'quantity', 'INSERT')),
+  true, 'authenticated can INSERT allowed columns');
 
 select * from finish();
 rollback;

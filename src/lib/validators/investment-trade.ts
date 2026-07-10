@@ -4,28 +4,54 @@ import { dateString, krwAmount, paginationQuery } from "./common"
 
 const tradeType = z.enum(["buy", "sell", "dividend"])
 
+/** 수량 상한 — numeric(20,8) 정수부 한도 내 + toFixed(8) 지수 표기 방지 (TS 리뷰 HIGH-2) */
+export const MAX_TRADE_QUANTITY = 1_000_000_000_000 // 1조 주
+
 /**
  * POST /investment-trades (API.md §11.2).
  * quantity는 소수 허용(numeric(20,8)), 금액은 KRW 정수.
+ * net_amount 규약(DB.md §1.9): buy = total + fee + tax / sell·dividend = total − fee − tax
+ * — RPC 서두 검증과 이중 적용.
  */
-export const createInvestmentTradeSchema = z.object({
-  assetId: z.uuid(),
-  tradeType,
-  date: dateString,
-  ticker: z
-    .string()
-    .max(20)
-    .nullish()
-    .transform((value) => (value === "" || value === undefined ? null : value)),
-  quantity: z.number().positive("수량은 0보다 커야 합니다").finite(),
-  unitPrice: krwAmount.min(0),
-  totalAmount: krwAmount.min(0),
-  fee: krwAmount.min(0).default(0),
-  tax: krwAmount.min(0).default(0),
-  netAmount: krwAmount.min(0),
-  memo: z.string().max(500).nullish(),
-  accountId: z.uuid().nullish(),
-})
+export const createInvestmentTradeSchema = z
+  .object({
+    assetId: z.uuid(),
+    tradeType,
+    date: dateString,
+    ticker: z
+      .string()
+      .max(20)
+      .nullish()
+      .transform((value) => (value === "" || value === undefined ? null : value)),
+    quantity: z
+      .number()
+      .positive("수량은 0보다 커야 합니다")
+      .finite()
+      .max(MAX_TRADE_QUANTITY, "수량이 허용 범위를 초과했습니다"),
+    unitPrice: krwAmount.min(0),
+    totalAmount: krwAmount.min(0),
+    fee: krwAmount.min(0).default(0),
+    tax: krwAmount.min(0).default(0),
+    netAmount: krwAmount.min(0),
+    memo: z.string().max(500).nullish(),
+    accountId: z.uuid().nullish(),
+  })
+  .superRefine((value, ctx) => {
+    const expected =
+      value.tradeType === "buy"
+        ? value.totalAmount + value.fee + value.tax
+        : value.totalAmount - value.fee - value.tax
+    if (value.netAmount !== expected) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["netAmount"],
+        message:
+          value.tradeType === "buy"
+            ? "netAmount는 totalAmount + fee + tax 여야 합니다"
+            : "netAmount는 totalAmount − fee − tax 여야 합니다",
+      })
+    }
+  })
 
 /**
  * PATCH /investment-trades/{id} — 메모만 수정 가능 (API.md §11.4).

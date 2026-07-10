@@ -219,6 +219,41 @@ describe("create_investment_trade — FIFO 차감·실현손익 (DB.md §3.4)", 
     ).rejects.toMatchObject({ code: "CF400" })
   })
 
+  test("net_amount 규약 위반은 CF400 (buy: total+fee+tax / sell: total−fee−tax)", async () => {
+    const categoryId = await createAssetCategory("주식")
+    const assetId = await createAsset("해외주식", categoryId)
+
+    // buy: fee 100 인데 net = total → 규약 위반
+    await expect(
+      createTrade(buyPayload(assetId, "2026-01-01", 10, 1000, { fee: 100 })),
+    ).rejects.toMatchObject({ code: "CF400" })
+
+    // buy: net = total + fee + tax → 통과
+    const buyOk = await createTrade(
+      buyPayload(assetId, "2026-01-01", 10, 1000, {
+        fee: 100,
+        tax: 50,
+        net_amount: 10_150,
+      }),
+    )
+    expect(Number(buyOk.remaining_quantity)).toBe(10)
+
+    // sell: net = total − fee − tax → 통과, 위반 시 CF400
+    const sellOk = await createTrade(
+      sellPayload(assetId, "2026-02-01", 5, 7_850, {
+        total_amount: 8_000,
+        fee: 100,
+        tax: 50,
+      }),
+    )
+    expect(Number(sellOk.realized_gain)).toBe(2_850) // 7850 − 5×1000
+    await expect(
+      createTrade(
+        sellPayload(assetId, "2026-02-01", 1, 2_000, { total_amount: 1_000, fee: 100 }),
+      ),
+    ).rejects.toMatchObject({ code: "CF400" })
+  })
+
   test("dividend는 로트에 영향 없이 기록된다", async () => {
     const categoryId = await createAssetCategory("주식")
     const assetId = await createAsset("해외주식", categoryId)
@@ -280,6 +315,67 @@ describe("delete_investment_trade — 역FIFO 복원·가드 (DB.md §3.5)", () 
     ).rejects.toMatchObject({ code: "CF409" })
 
     expect(await remainingOf(lot.id)).toBe(6)
+  })
+
+  test("다중 매도 역순(LIFO) 삭제: 중간 상태 검증 후 초기 로트로 완전 복원", async () => {
+    const categoryId = await createAssetCategory("주식")
+    const assetId = await createAsset("해외주식", categoryId)
+    const lot1 = await createTrade(buyPayload(assetId, "2026-01-01", 10, 1000))
+    const lot2 = await createTrade(buyPayload(assetId, "2026-01-05", 10, 2000))
+    const sell1 = await createTrade(sellPayload(assetId, "2026-02-01", 8, 9000))
+    const sell2 = await createTrade(sellPayload(assetId, "2026-02-02", 8, 17000))
+    // 매도 후: lot1 = 0 (8 + 2 차감), lot2 = 4 (6 차감)
+    expect(await remainingOf(lot1.id)).toBe(0)
+    expect(await remainingOf(lot2.id)).toBe(4)
+
+    // 최신 매도부터 삭제(역순) — 중간 상태는 sell1만 있던 상태와 일치해야 함
+    await callRpc("delete_investment_trade", { p_id: sell2.id })
+    expect(await remainingOf(lot1.id)).toBe(2)
+    expect(await remainingOf(lot2.id)).toBe(10)
+
+    await callRpc("delete_investment_trade", { p_id: sell1.id })
+    expect(await remainingOf(lot1.id)).toBe(10)
+    expect(await remainingOf(lot2.id)).toBe(10)
+  })
+
+  test("다중 매도 정순 삭제: 역FIFO 근사 복원의 문서화된 중간 상태 + 최종 완전 복원", async () => {
+    const categoryId = await createAssetCategory("주식")
+    const assetId = await createAsset("해외주식", categoryId)
+    const lot1 = await createTrade(buyPayload(assetId, "2026-01-01", 10, 1000))
+    const lot2 = await createTrade(buyPayload(assetId, "2026-01-05", 10, 2000))
+    const sell1 = await createTrade(sellPayload(assetId, "2026-02-01", 8, 9000))
+    const sell2 = await createTrade(sellPayload(assetId, "2026-02-02", 8, 17000))
+
+    // 중간 매도(sell1) 먼저 삭제 — 근사 복원: 최근 차감 로트(lot2)부터 6, 나머지 2는 lot1
+    // (원래 sell1은 lot1만 8 차감했으므로 정확 복원과 다르다 — 알려진 한계, DB.md §3.5)
+    await callRpc("delete_investment_trade", { p_id: sell1.id })
+    expect(await remainingOf(lot1.id)).toBe(2)
+    expect(await remainingOf(lot2.id)).toBe(10)
+
+    await callRpc("delete_investment_trade", { p_id: sell2.id })
+    expect(await remainingOf(lot1.id)).toBe(10)
+    expect(await remainingOf(lot2.id)).toBe(10)
+  })
+
+  test("ticker NULL 매도 삭제는 NULL 로트만 복원한다 (혼재·부분 소진 상태)", async () => {
+    const categoryId = await createAssetCategory("주식")
+    const assetId = await createAsset("해외주식", categoryId)
+    const nullLot = await createTrade(
+      buyPayload(assetId, "2026-01-01", 10, 1000, { ticker: null }),
+    )
+    const aaplLot = await createTrade(buyPayload(assetId, "2026-01-01", 10, 1000))
+    // 양쪽 모두 부분 소진
+    const nullSell = await createTrade(
+      sellPayload(assetId, "2026-02-01", 6, 7000, { ticker: null }),
+    )
+    await createTrade(sellPayload(assetId, "2026-02-01", 4, 5000))
+    expect(await remainingOf(nullLot.id)).toBe(4)
+    expect(await remainingOf(aaplLot.id)).toBe(6)
+
+    await callRpc("delete_investment_trade", { p_id: nullSell.id })
+
+    expect(await remainingOf(nullLot.id)).toBe(10) // NULL 로트만 복원
+    expect(await remainingOf(aaplLot.id)).toBe(6) // AAPL 로트는 그대로
   })
 
   test("매칭되지 않은 buy와 dividend는 삭제된다", async () => {

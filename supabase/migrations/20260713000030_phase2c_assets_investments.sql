@@ -53,7 +53,7 @@ CREATE TABLE public.asset_valuations (
   id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   asset_id   uuid NOT NULL REFERENCES public.assets(id) ON DELETE CASCADE,
   date       date NOT NULL,
-  value      bigint NOT NULL,
+  value      bigint NOT NULL CHECK (value >= 0),
   source     text NOT NULL DEFAULT 'manual' CHECK (source IN ('manual','api','estimate','auto')),
   memo       text,
   created_at timestamptz NOT NULL DEFAULT now(),
@@ -113,8 +113,10 @@ CREATE INDEX idx_asset_valuations_date       ON public.asset_valuations (date);
 CREATE INDEX idx_trades_asset_date ON public.investment_trades (asset_id, date);
 CREATE INDEX idx_trades_account_id ON public.investment_trades (account_id) WHERE account_id IS NOT NULL;
 CREATE INDEX idx_trades_date       ON public.investment_trades (date);
--- FIFO 열린 로트 부분 인덱스: create_investment_trade 의 단일 문장 FOR UPDATE 잠금 스캔 최적화
--- (잠금·FIFO 정렬 키 (date, id) 와 일치)
+-- FIFO 열린 로트 부분 인덱스: create_investment_trade 의 단일 문장 FOR UPDATE 잠금 스캔용.
+-- 주의: 잠금 쿼리의 ticker 조건이 (ticker = $1 OR (ticker IS NULL AND $1 IS NULL)) OR 형태라
+-- ticker 열은 인덱스 탐색 키로 쓰이지 않고 asset_id 프리픽스 스캔 + 필터로 동작한다
+-- (실측 캡처: docs/perf/phase2c-explain.md — 자산당 로트 수백 건 규모에서 기준 내).
 CREATE INDEX idx_trades_open_lots  ON public.investment_trades (asset_id, ticker, date, id)
   WHERE trade_type = 'buy' AND remaining_quantity > 0;
 -- 역FIFO(차감된 로트) 스캔 — 잠금은 (date, id ASC), 복원 적용은 메모리에서 date DESC
@@ -244,6 +246,10 @@ GROUP BY asset_id, EXTRACT(YEAR FROM date), EXTRACT(MONTH FROM date);
 -- 4.1 create_investment_trade — FIFO 차감 + realized_gain (SECURITY DEFINER)
 --     TS 레퍼런스(src/lib/calculations/fifo.ts matchSellToLots/applyTrade)와
 --     property-based 교차 검증 대상. 정렬 키 (date, id)·round(half away from zero) 동일.
+--     [인가 경계] 소유자 검증은 앱 서버 guarded()(src/server/api-guard.ts)가 담당한다.
+--     SECURITY DEFINER인 이 함수(및 4.2)는 RLS를 우회하므로 EXECUTE 권한을
+--     authenticated 밖으로 확대하지 말 것. 함수 내 auth.jwt() 검증은
+--     postgres.js 직결 경로(JWT 없음)를 차단하므로 넣지 않는다 — 의도된 설계.
 CREATE OR REPLACE FUNCTION public.create_investment_trade(p jsonb)
 RETURNS public.investment_trades
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
@@ -265,6 +271,20 @@ BEGIN
      OR COALESCE((p->>'tax')::bigint, 0) < 0
      OR COALESCE((p->>'net_amount')::bigint, -1) < 0 THEN
     RAISE EXCEPTION '잘못된 수량/금액 입력입니다' USING ERRCODE = 'CF400';
+  END IF;
+
+  -- [금액 정합] net_amount 규약(DB.md §1.9): buy = total + fee + tax(총 지출) /
+  -- sell·dividend = total − fee − tax(실수령). Zod(createInvestmentTradeSchema)와 이중 적용.
+  -- 주의: plpgsql IF 조건의 CASE는 내부 THEN이 IF 파싱을 조기 종료시키므로 괄호 필수
+  IF (p->>'net_amount')::bigint <> (CASE
+       WHEN p->>'trade_type' = 'buy'
+         THEN (p->>'total_amount')::bigint
+              + COALESCE((p->>'fee')::bigint, 0) + COALESCE((p->>'tax')::bigint, 0)
+       ELSE (p->>'total_amount')::bigint
+            - COALESCE((p->>'fee')::bigint, 0) - COALESCE((p->>'tax')::bigint, 0)
+     END) THEN
+    RAISE EXCEPTION 'net_amount가 총액·수수료·세금 규약과 일치하지 않습니다'
+      USING ERRCODE = 'CF400';
   END IF;
 
   INSERT INTO investment_trades (
@@ -549,12 +569,15 @@ GRANT EXECUTE ON FUNCTION
   public.snapshot_asset_valuations(date)
 TO authenticated;
 
--- FIFO 상태 컬럼 이중 방어(DB.md §5 취지): 테이블 전체 UPDATE를 부여하면
+-- FIFO 상태 컬럼 이중 방어(DB.md §5 취지): 테이블 전체 UPDATE/INSERT를 부여하면
 -- 컬럼 REVOKE가 무력화되므로(PG 권한 모델: 테이블 권한 ⊃ 컬럼 권한),
--- UPDATE는 허용 컬럼만 열거해 컬럼 단위로 부여한다.
--- remaining_quantity/realized_gain 변경은 SECURITY DEFINER RPC
--- (create/delete_investment_trade) 로직만이 유일한 통제 경로다.
-GRANT SELECT, INSERT, DELETE ON public.investment_trades TO authenticated;
+-- UPDATE·INSERT 모두 허용 컬럼만 열거해 컬럼 단위로 부여한다
+-- (INSERT까지 제한해 remaining_quantity/realized_gain 위조 INSERT 차단).
+-- 두 컬럼의 변경은 SECURITY DEFINER RPC(create/delete_investment_trade)가 유일한 경로다.
+GRANT SELECT, DELETE ON public.investment_trades TO authenticated;
+GRANT INSERT (asset_id, trade_type, date, ticker, quantity, unit_price,
+              total_amount, fee, tax, net_amount, memo, account_id)
+  ON public.investment_trades TO authenticated;
 GRANT UPDATE (asset_id, trade_type, date, ticker, quantity, unit_price,
               total_amount, fee, tax, net_amount, memo, account_id)
   ON public.investment_trades TO authenticated;
@@ -574,5 +597,5 @@ BEGIN
     $job$SELECT public.snapshot_asset_valuations()$job$
   );
 EXCEPTION WHEN OTHERS THEN
-  RAISE NOTICE 'pg_cron 사용 불가(로컬 등) — snapshot-asset-valuations 잡 등록 생략: %', SQLERRM;
+  RAISE WARNING 'pg_cron 사용 불가(로컬 등) — snapshot-asset-valuations 잡 등록 생략: %', SQLERRM;
 END $$;

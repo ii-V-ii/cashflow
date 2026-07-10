@@ -53,6 +53,39 @@ describe("createInvestmentTradeSchema (API.md §11.2)", () => {
       createInvestmentTradeSchema.parse({ ...valid, tradeType: "hold" }),
     ).toThrow()
   })
+
+  test("수량 상한 초과 거부 (toFixed 지수 표기 크래시 방지)", () => {
+    expect(() =>
+      createInvestmentTradeSchema.parse({ ...valid, quantity: 1e21 }),
+    ).toThrow()
+  })
+
+  test("net_amount 규약(DB.md §1.9): buy = total+fee+tax", () => {
+    const buyWithCosts = {
+      ...valid,
+      fee: 100,
+      tax: 50,
+      netAmount: 25_150, // 25000 + 100 + 50
+    }
+    expect(createInvestmentTradeSchema.parse(buyWithCosts).netAmount).toBe(25_150)
+    expect(() =>
+      createInvestmentTradeSchema.parse({ ...buyWithCosts, netAmount: 24_850 }),
+    ).toThrow()
+  })
+
+  test("net_amount 규약: sell/dividend = total−fee−tax", () => {
+    const sellWithCosts = {
+      ...valid,
+      tradeType: "sell",
+      fee: 100,
+      tax: 50,
+      netAmount: 24_850, // 25000 − 100 − 50
+    }
+    expect(createInvestmentTradeSchema.parse(sellWithCosts).netAmount).toBe(24_850)
+    expect(() =>
+      createInvestmentTradeSchema.parse({ ...sellWithCosts, netAmount: 25_150 }),
+    ).toThrow()
+  })
 })
 
 describe("updateTradeMemoSchema — 메모만 수정 (API.md §11.4)", () => {

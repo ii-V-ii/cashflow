@@ -293,6 +293,7 @@ CREATE TABLE public.investment_trades (
 ```
 
 > 계좌 효과(잔액 뷰에서 사용): **buy → account_id −total_amount / sell·dividend → account_id +net_amount** (account_id 있을 때만).
+> **net_amount 규약(확정)**: buy = total_amount + fee + tax(총 지출) / sell·dividend = total_amount − fee − tax(실수령). RPC 서두와 Zod(createInvestmentTradeSchema)에서 이중 검증한다.
 > 일반 UPDATE/DELETE 경로로 `remaining_quantity`/`realized_gain`을 건드리지 못하도록 앱 계층에서는 RPC만 사용하고, `REVOKE UPDATE(remaining_quantity, realized_gain) ON investment_trades FROM authenticated` 컬럼 권한으로 이중 방어한다(§5).
 
 ---

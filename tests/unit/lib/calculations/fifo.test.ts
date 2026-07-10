@@ -336,4 +336,32 @@ describe("applyTrade / removeTrade — 원장 시뮬레이터 (RPC 교차 검증
     expect(byId.get("t2")?.remainingQuantity).toBe(10) // 역FIFO: 최근 로트 우선 복원
     expect(byId.get("t1")?.remainingQuantity).toBe(2)
   })
+
+  test("1e21 이상 수량은 TypeError가 아닌 FifoError(VALIDATION_ERROR) (toFixed 지수 표기 방어)", () => {
+    try {
+      applyTrade([], { ...buy("t1", "2026-01-01", 1, 1000), quantity: 1e21 })
+      expect.unreachable()
+    } catch (error) {
+      expect(error).toBeInstanceOf(FifoError)
+      expect((error as FifoError).code).toBe("VALIDATION_ERROR")
+    }
+  })
+
+  test("net_amount 규약 위반은 FifoError(VALIDATION_ERROR) — RPC CF400과 등가", () => {
+    // buy: net = total + fee + tax 이어야 함
+    try {
+      applyTrade([], { ...buy("t1", "2026-01-01", 10, 1000), fee: 100, tax: 50 })
+      expect.unreachable()
+    } catch (error) {
+      expect((error as FifoError).code).toBe("VALIDATION_ERROR")
+    }
+    // 규약을 지키면 통과
+    const ledger = applyTrade([], {
+      ...buy("t1", "2026-01-01", 10, 1000),
+      fee: 100,
+      tax: 50,
+      netAmount: 10_150,
+    })
+    expect(ledger[0].remainingQuantity).toBe(10)
+  })
 })

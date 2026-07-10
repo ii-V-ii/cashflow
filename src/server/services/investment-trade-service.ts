@@ -86,9 +86,21 @@ export async function listTrades(query: ListTradesQuery): Promise<PageDto<TradeD
     ORDER BY t.date DESC, t.created_at DESC
     LIMIT ${query.limit} OFFSET ${offset}
   `
+  // 범위 밖 페이지(빈 결과)는 window count가 없으므로 total을 별도 조회 (드문 경로)
+  let total = rows.length > 0 ? Number(rows[0].total_count) : 0
+  if (rows.length === 0) {
+    const countRows = await sql`
+      SELECT count(*)::int AS n
+      FROM investment_trades t
+      WHERE (${query.assetId ?? null}::uuid IS NULL OR t.asset_id = ${query.assetId ?? null})
+        AND (${query.from ?? null}::date IS NULL OR t.date >= ${query.from ?? null})
+        AND (${query.to ?? null}::date IS NULL OR t.date <= ${query.to ?? null})
+    `
+    total = Number(countRows[0].n)
+  }
   return {
     items: rows.map(mapTradeRow),
-    total: rows.length > 0 ? Number(rows[0].total_count) : 0,
+    total,
     page: query.page,
     limit: query.limit,
   }

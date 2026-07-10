@@ -157,6 +157,31 @@ describe("GET /investment-trades — 목록·필터 (API.md §11.1)", () => {
     expect(body.data.total).toBe(1)
     expect(body.data.items[0].date).toBe("2026-06-01")
   })
+
+  test("페이지네이션 경계: limit=100 통과·limit=101 거절·마지막 페이지 초과는 빈 배열", async () => {
+    await createTrade({ date: "2026-01-05" })
+    await createTrade({ date: "2026-01-06" })
+
+    const maxLimit = await listTrades(
+      jsonRequest("/api/v1/investment-trades?limit=100", "GET"),
+    )
+    expect(maxLimit.status).toBe(200)
+    expect((await maxLimit.json()).data.items).toHaveLength(2)
+
+    const overLimit = await listTrades(
+      jsonRequest("/api/v1/investment-trades?limit=101", "GET"),
+    )
+    expect(overLimit.status).toBe(400)
+
+    const beyondLast = await listTrades(
+      jsonRequest("/api/v1/investment-trades?page=99&limit=20", "GET"),
+    )
+    const beyondBody = await beyondLast.json()
+    expect(beyondLast.status).toBe(200)
+    expect(beyondBody.data.items).toEqual([])
+    expect(beyondBody.data.page).toBe(99)
+    expect(beyondBody.data.total).toBe(2) // 빈 페이지여도 total은 정확해야 함
+  })
 })
 
 describe("PATCH·DELETE /investment-trades/{id} (API.md §11.4-11.5)", () => {
@@ -299,6 +324,24 @@ describe("summary·tickers·annual (API.md §11.6-11.8)", () => {
       ),
     )
     expect((await response.json()).data.totalBuy).toBe(20_000)
+  })
+
+  test("summary 월 경계 from/to → scope=month 매핑 (2월만 집계)", async () => {
+    await seedTrades()
+    const response = await getSummary(
+      jsonRequest(
+        "/api/v1/investment-trades/summary?from=2026-02-01&to=2026-02-28",
+        "GET",
+      ),
+    )
+    const body = await response.json()
+    expect(response.status).toBe(200)
+    expect(body.data).toMatchObject({
+      totalBuy: 0, // 2월엔 매수 없음
+      totalSell: 8_000,
+      realizedGain: 3_000,
+      dividendIncome: 0,
+    })
   })
 
   test("경계가 아닌 기간은 400", async () => {
