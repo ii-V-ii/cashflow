@@ -8,6 +8,17 @@ export type TransactionType = "income" | "expense" | "transfer"
 export type TransactionStatus = "pending" | "applied"
 export type AccountType = "cash" | "bank" | "card" | "savings" | "investment"
 export type ExpenseKind = "consumption" | "saving"
+export type DepositType = "lump_sum" | "installment"
+export type TaxType = "normal" | "preferential" | "tax_free" | "high"
+export type RecurringFrequency = "daily" | "weekly" | "monthly" | "yearly"
+
+/** 예측 가정치 (API.md §13.1) */
+export interface ForecastAssumptions {
+  readonly incomeGrowthRate?: number // 수입 증가율 (%, 연간)
+  readonly expenseGrowthRate?: number // 지출 변동율 (%, 연간)
+  readonly inflationRate?: number // 인플레이션율 (%)
+  readonly assetGrowthRates?: Record<string, number> // 자산 카테고리별 성장률 (%)
+}
 
 export interface TransactionFilter {
   type?: TransactionType
