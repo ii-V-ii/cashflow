@@ -43,6 +43,34 @@ describe("createAccountSchema", () => {
     ).toBe(true)
   })
 
+  test("caps monetary fields at 10조 (SEC-M2)", () => {
+    const MAX_KRW = 10_000_000_000_000
+    expect(
+      createAccountSchema.safeParse({
+        name: "은행",
+        type: "bank",
+        balance: MAX_KRW + 1,
+      }).success,
+    ).toBe(false)
+    expect(
+      createAccountSchema.safeParse({
+        name: "카드",
+        type: "card",
+        creditLimit: MAX_KRW + 1,
+      }).success,
+    ).toBe(false)
+    expect(
+      createAccountSchema.safeParse({
+        name: "적금",
+        type: "savings",
+        monthlyPayment: MAX_KRW + 1,
+      }).success,
+    ).toBe(false)
+    expect(
+      updateAccountSchema.safeParse({ initialBalance: MAX_KRW + 1 }).success,
+    ).toBe(false)
+  })
+
   test("accepts savings fields", () => {
     expect(
       createAccountSchema.safeParse({

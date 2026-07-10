@@ -712,6 +712,7 @@ ForecastResult = { ym: 'YYYY-MM', projectedIncome, projectedExpense,
 |---|---|---|
 | `VALIDATION_ERROR` | 400 | Zod 검증 실패 (message = 첫 issue) |
 | `UNAUTHORIZED` | 401 | 세션 없음/만료 |
+| `FORBIDDEN` | 403 | 세션은 유효하나 소유자(OWNER_EMAIL) 불일치 |
 | `NOT_FOUND` | 404 | 자원 없음 (참조 id 포함) |
 | `DUPLICATE_BUDGET` | 409 | 동일 year+month 예산 존재 |
 | `REFERENCE_EXISTS` | 409 | 참조 중인 자원 삭제 시도 (계좌·카테고리·자산 등) |
@@ -722,7 +723,7 @@ ForecastResult = { ym: 'YYYY-MM', projectedIncome, projectedExpense,
 | `MAX_DEPTH_EXCEEDED` | 422 | 카테고리 3단계 이상 |
 | `INTERNAL_ERROR` | 500 | 서버 오류 (상세는 서버 로그에만, 응답에 노출 금지) |
 
-RPC 내부의 `RAISE EXCEPTION`은 SQLSTATE·메시지 규약으로 위 코드에 매핑(매핑 테이블은 `src/server/rpc.ts`에서 단일 관리, 규약 상세는 DB.md).
+RPC 내부의 `RAISE EXCEPTION`은 커스텀 SQLSTATE 규약으로 위 코드에 매핑한다 — `CF422` → 422 `SAVING_CATEGORY_REQUIRED`, `CF404` → 404 `NOT_FOUND` (메시지 substring 매칭 금지, 매핑은 `src/server/api-errors.ts`에서 단일 관리, 규약 상세는 DB.md §3).
 
 ---
 

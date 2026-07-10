@@ -465,6 +465,8 @@ GROUP BY asset_id, EXTRACT(YEAR FROM date), EXTRACT(MONTH FROM date);
 
 원칙: 쓰기 RPC는 **단일 왕복·원자 처리**, 잔액 UPDATE·자산 동기화 없음(파생이므로). 읽기 RPC는 화면 1개 = 1왕복.
 모든 함수는 `SECURITY INVOKER`, `SET search_path = public` 을 명시한다.
+
+**RAISE ERRCODE 규약 (확정, SEC-L2)**: 도메인 검증 RAISE는 메시지 매칭이 아니라 커스텀 SQLSTATE로 API 에러에 매핑한다 — `CF422` = 저축 거래 정합성 위반(→ 422 `SAVING_CATEGORY_REQUIRED`), `CF404` = 자원 없음(→ 404 `NOT_FOUND`). 매핑은 `src/server/api-errors.ts`에서 단일 관리. 저축 정합성은 `assert_tx_saving_consistency(type, category_id, to_account_id)` 헬퍼가 순방향(saving 카테고리 → 입금 계좌 필수)과 역방향(입금 계좌 보유 지출 → saving 카테고리 필수)을 모두 검증하며, `create_transaction`은 입력 기준·`update_transaction`은 부분 PATCH 병합 후 **최종 상태** 기준으로 호출한다(마이그레이션 `20260710140000_phase1_saving_consistency.sql`). 아래 3.1 초안의 인라인 검증·`P0001`은 초기 설계 기록이다.
 **예외(확정)**: `create_investment_trade` / `delete_investment_trade` 2개 함수만 `SECURITY DEFINER SET search_path = public` 으로 확정한다(§5의 FIFO 컬럼 REVOKE와의 충돌 해소). 이 2개 함수는 **함수 로직이 유일한 FIFO 무결성 통제**이므로 입력 검증을 함수 서두에 집중한다. 나머지 RPC는 전부 SECURITY INVOKER 유지.
 
 ### 3.1 create_transaction(p jsonb) → transactions (실행 가능 초안)
@@ -1078,10 +1080,14 @@ CREATE INDEX idx_trades_consumed_lots ON public.investment_trades (asset_id, tic
 ```
 
 > `uq_*` UNIQUE 제약이 만드는 인덱스(budgets(year,month), budget_items(budget_id,category_id), asset_valuations(asset_id,date), forecast_results(scenario_id,date), tags(name))는 위 목록과 별도로 자동 생성된다.
+>
+> 검색(`description`/`memo` ILIKE)은 3만 건 규모에서 Seq Scan으로 기준(<100ms) 내(docs/perf/phase1-explain.md) — 검색 지연이 체감되는 시점(수십만 건 또는 >100ms)에 `pg_trgm` GIN 인덱스(`gin_trgm_ops`)를 도입한다.
 
 ---
 
 ## 5. RLS 정책
+
+**인가 경계 (확정)**: 실질 인가 경계는 앱 서버의 `guarded()`(세션 검증 + `OWNER_EMAIL` 소유자 검증, `src/server/api-guard.ts`)다. 아래 RLS는 PostgREST/anon 노출 표면을 방어하는 계층이며, 앱의 postgres.js 직결 경로(테이블 소유자 롤)에는 적용되지 않는다 — 이는 의식적 아키텍처 결정이다. 보조 가드로 프로덕션 기동 시 슈퍼유저 접속을 차단한다(`src/server/db/role-guard.ts`).
 
 단일 사용자 앱이지만 Supabase(PostgREST)로 노출되므로 전 테이블 RLS 필수. 원칙: **anon 완전 차단 + authenticated 는 소유자 검증 필수**. `USING (true)` 정책은 금지 — 정책 USING/WITH CHECK 에 소유자 이메일 검증(`auth.jwt()->>'email' = current_setting('app.owner_email', true)` 또는 소유자 uuid 상수 비교)을 **필수**로 적용한다. 아울러 컷오버 시 Supabase Auth 신규 가입을 비활성화한다(MIGRATION.md §7 체크리스트).
 

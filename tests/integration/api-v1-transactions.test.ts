@@ -151,6 +151,15 @@ describe("POST /api/v1/transactions", () => {
     expect(body.error.code).toBe("SAVING_CATEGORY_REQUIRED")
   })
 
+  test("consumption category with toAccountId → 422 (역방향 검증, DB-H1)", async () => {
+    const { response, body } = await createOne({
+      categoryId: foodCategoryId,
+      toAccountId: savingsId,
+    })
+    expect(response.status).toBe(422)
+    expect(body.error.code).toBe("SAVING_CATEGORY_REQUIRED")
+  })
+
   test("saving transaction (expense + toAccountId + saving category) succeeds", async () => {
     const { response, body } = await createOne({
       categoryId: savingCategoryId,
@@ -285,6 +294,29 @@ describe("GET/PATCH/DELETE /api/v1/transactions/{id}", () => {
     expect(response.status).toBe(200)
     expect(body.data.amount).toBe(9000)
     expect(body.data.tags.map((t: { name: string }) => t.name)).toEqual(["회사"])
+  })
+
+  test("patch composing an invalid saving state → 422 (최종 상태 기준, DB-H1)", async () => {
+    const { body: created } = await createOne({
+      categoryId: savingCategoryId,
+      toAccountId: savingsId,
+      description: "월 저축",
+    })
+
+    // 소비 카테고리로 전환하는데 toAccountId 유지 → 역방향 위반
+    const switched = await patchTransaction(
+      jsonRequest("http://localhost/x", "PATCH", { categoryId: foodCategoryId }),
+      idParams(created.data.id),
+    )
+    expect(switched.status).toBe(422)
+    expect((await switched.json()).error.code).toBe("SAVING_CATEGORY_REQUIRED")
+
+    // 저축 거래에서 입금 계좌 제거 → 순방향 위반
+    const removed = await patchTransaction(
+      jsonRequest("http://localhost/x", "PATCH", { toAccountId: null }),
+      idParams(created.data.id),
+    )
+    expect(removed.status).toBe(422)
   })
 
   test("patch unknown id → 404", async () => {

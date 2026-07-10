@@ -157,7 +157,7 @@ select throws_ok(
       'type','expense','amount',100,'description','적금','date','2026-07-01',
       'account_id','00000000-0000-0000-0000-00000000000a',
       'category_id','00000000-0000-0000-0000-0000000000c1'))$$,
-  'P0001', null, 'saving-category expense without to_account_id is rejected by RPC');
+  'CF422', null, 'saving-category expense without to_account_id is rejected by RPC');
 
 select * from finish();
 rollback;

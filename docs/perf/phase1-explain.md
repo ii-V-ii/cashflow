@@ -131,3 +131,63 @@ select * from public.account_balances_v;
 
 rollback;
 ```
+
+---
+
+# Phase 1 수정 라운드 — listTransactions 대표 필터 조합 EXPLAIN (DB-H2/H3)
+
+> 거래 3만 건 + 태그 10종(거래의 약 20% 연결) 시드 기준, `GET /api/v1/transactions`가 실행하는
+> 조인·정렬·윈도우 count 구조 그대로 5개 대표 필터 조합을 `EXPLAIN (ANALYZE, BUFFERS)` 실측.
+> **기준 <100ms — 전 조합 통과.**
+>
+> - 측정일: 2026-07-10 (Phase 1 수정 라운드)
+> - 환경: 로컬 Supabase (PostgreSQL 17, supabase start, 포트 54322)
+> - 시드: 위 "재현 쿼리"와 동일 + memo(1/7)·태그 10종/`transaction_tags` 약 6,000행, 시드 후 `ANALYZE`
+> - 방법: 트랜잭션 내 시드 → 각 조합 EXPLAIN → ROLLBACK
+
+## 결과 요약
+
+| # | 조합 | Execution Time | 기준 | 판정 | 주요 플랜 |
+|---|---|---|---|---|---|
+| 1 | 기본 월 조회 (`from`/`to`, page 1) | **2.53 ms** | <100ms | ✅ | `idx_tx_date_type_status` Bitmap Index Scan (1,020행) |
+| 2 | `search` (description/memo ILIKE) | **21.45 ms** | <100ms | ✅ | transactions Seq Scan (30k 전행 필터) — 아래 관찰 참조 |
+| 3 | `tags` 필터 (EXISTS) | **3.75 ms** | <100ms | ✅ | `idx_transaction_tags_tag_id` 경유 세미조인 |
+| 4 | `accountId` OR `to_account_id` | **6.55 ms** | <100ms | ✅ | `idx_tx_account_status` + `idx_tx_to_account` BitmapOr |
+| 5 | 페이지 후반 OFFSET (page 1000, 무필터) | **64.90 ms** | <100ms | ✅ | `idx_tx_date_type_status` Backward Scan 30k행 + lateral 태그 30k회 |
+
+## 관찰
+
+- **[2] search**: `%…%` ILIKE는 인덱스 불가 → 30k 전행 Seq Scan(약 21ms). 3만 건 규모에서는 기준 내.
+  검색 지연이 체감되는 시점(수십만 건 또는 >100ms)에 `pg_trgm` GIN 인덱스
+  (`description gin_trgm_ops`, `memo gin_trgm_ops`)를 도입한다 — docs/DB.md §4 기준 참조.
+- **[5] 페이지 후반 OFFSET**: OFFSET 19,980은 선행 2만 행을 읽고 버리며, lateral 태그 집계가
+  행마다 실행돼(30k loops) 비용의 대부분을 차지한다(64.9ms). 무한 스크롤 UI 특성상 실사용 도달
+  가능성이 낮고 기준 내이므로 유지 — 수십만 건 도달 시 keyset pagination(date, created_at 커서) 전환 후보.
+- [1]·[4]는 기존 인덱스(`idx_tx_date_type_status`, `idx_tx_account_status`/`idx_tx_to_account`)가
+  그대로 사용됨을 확인. [3]은 `idx_transaction_tags_tag_id` 역방향 인덱스 경유.
+
+## 재현 (요약)
+
+시드는 위 "재현 쿼리"에 아래 태그 시드를 추가한 뒤, listTransactions와 동일한
+`JOIN accounts / LEFT JOIN categories / LEFT JOIN accounts(ta) / LEFT JOIN LATERAL(태그 jsonb_agg)` +
+`count(*) over()` + `ORDER BY date DESC, created_at DESC LIMIT 20` 골격에 각 필터를 적용해 EXPLAIN 한다.
+
+```sql
+insert into public.tags (id, name)
+select ('00000000-0000-0000-0000-00000000e0' || lpad(g::text, 2, '0'))::uuid, '태그' || g
+from generate_series(1, 10) g;
+
+insert into public.transaction_tags (transaction_id, tag_id)
+select t.id,
+  ('00000000-0000-0000-0000-00000000e0' || lpad((1 + (row_number() over ()) % 10)::text, 2, '0'))::uuid
+from public.transactions t
+where (t.amount % 5) = 0;
+
+-- 필터 조합:
+-- [1] t.date >= '2024-06-01' and t.date <= '2024-06-30'
+-- [2] (t.description ilike '%거래 123%' or t.memo ilike '%거래 123%')
+-- [3] exists (select 1 from transaction_tags xt join tags xtag on xtag.id = xt.tag_id
+--             where xt.transaction_id = t.id and xtag.name = any(array['태그3']))
+-- [4] (t.account_id = :id or t.to_account_id = :id)
+-- [5] 무필터 + limit 20 offset 19980
+```

@@ -169,7 +169,7 @@ describe("create_transaction → account_balances_v", () => {
     })
 
     await expect(promise).rejects.toBeInstanceOf(RpcError)
-    await expect(promise).rejects.toMatchObject({ code: "P0001" })
+    await expect(promise).rejects.toMatchObject({ code: "CF422" })
     expect(await balanceOf(from)).toBe(100_000)
   })
 
@@ -187,7 +187,43 @@ describe("create_transaction → account_balances_v", () => {
         account_id: from,
         category_id: child,
       }),
-    ).rejects.toMatchObject({ code: "P0001" })
+    ).rejects.toMatchObject({ code: "CF422" })
+  })
+
+  test("rejects a consumption-category expense with to_account_id (역방향, DB-H1)", async () => {
+    const from = await createAccount("주계좌", 100_000)
+    const savings = await createAccount("적금", 0, "savings")
+    const consumption = await createCategory("식비", "expense", "consumption")
+
+    await expect(
+      createTx({
+        type: "expense",
+        amount: 10_000,
+        description: "잘못된 저축",
+        date: "2026-07-04",
+        account_id: from,
+        category_id: consumption,
+        to_account_id: savings,
+      }),
+    ).rejects.toMatchObject({ code: "CF422" })
+    expect(await balanceOf(from)).toBe(100_000)
+    expect(await balanceOf(savings)).toBe(0)
+  })
+
+  test("rejects an expense with to_account_id but no category (역방향, DB-H1)", async () => {
+    const from = await createAccount("주계좌", 100_000)
+    const savings = await createAccount("적금", 0, "savings")
+
+    await expect(
+      createTx({
+        type: "expense",
+        amount: 10_000,
+        description: "카테고리 없는 저축",
+        date: "2026-07-04",
+        account_id: from,
+        to_account_id: savings,
+      }),
+    ).rejects.toMatchObject({ code: "CF422" })
   })
 
   test("pending transactions are excluded from balances (applied-only aggregation)", async () => {
@@ -366,7 +402,91 @@ describe("update_transaction", () => {
         p_id: "00000000-0000-0000-0000-000000000000",
         p: { amount: 1 },
       }),
-    ).rejects.toMatchObject({ code: "P0001" })
+    ).rejects.toMatchObject({ code: "CF404" })
+  })
+
+  describe("저축 정합성 — 병합 후 최종 상태 기준 검증 (DB-H1)", () => {
+    async function createSavingTx(): Promise<{
+      txId: string
+      from: string
+      savings: string
+      saving: string
+      consumption: string
+    }> {
+      const from = await createAccount("주계좌", 100_000)
+      const savings = await createAccount("적금", 0, "savings")
+      const saving = await createCategory("저축", "expense", "saving")
+      const consumption = await createCategory("식비", "expense", "consumption")
+      await createTx({
+        type: "expense",
+        amount: 25_000,
+        description: "적금 납입",
+        date: "2026-07-04",
+        account_id: from,
+        category_id: saving,
+        to_account_id: savings,
+      })
+      return { txId: await onlyTransactionId(), from, savings, saving, consumption }
+    }
+
+    test("rejects switching a saving tx to a consumption category (to_account 유지)", async () => {
+      const { txId, consumption, from, savings } = await createSavingTx()
+
+      await expect(
+        callRpc("update_transaction", {
+          p_id: txId,
+          p: { category_id: consumption },
+        }),
+      ).rejects.toMatchObject({ code: "CF422" })
+      // 예외로 UPDATE 전체가 롤백 — 잔액 불변
+      expect(await balanceOf(from)).toBe(75_000)
+      expect(await balanceOf(savings)).toBe(25_000)
+    })
+
+    test("rejects removing to_account_id from a saving tx", async () => {
+      const { txId } = await createSavingTx()
+
+      await expect(
+        callRpc("update_transaction", {
+          p_id: txId,
+          p: { to_account_id: null },
+        }),
+      ).rejects.toMatchObject({ code: "CF422" })
+    })
+
+    test("rejects a partial PATCH that composes an invalid state (to_account만 추가)", async () => {
+      const from = await createAccount("주계좌", 100_000)
+      const savings = await createAccount("적금", 0, "savings")
+      const consumption = await createCategory("식비", "expense", "consumption")
+      await createTx({
+        type: "expense",
+        amount: 5_000,
+        description: "점심",
+        date: "2026-07-05",
+        account_id: from,
+        category_id: consumption,
+      })
+      const txId = await onlyTransactionId()
+
+      await expect(
+        callRpc("update_transaction", {
+          p_id: txId,
+          p: { to_account_id: savings },
+        }),
+      ).rejects.toMatchObject({ code: "CF422" })
+    })
+
+    test("accepts a normal partial update on a saving tx", async () => {
+      const { txId, from, savings } = await createSavingTx()
+
+      await callRpc("update_transaction", {
+        p_id: txId,
+        p: { amount: 30_000 },
+      })
+
+      expect(await balanceOf(from)).toBe(70_000)
+      expect(await balanceOf(savings)).toBe(30_000)
+    })
   })
 })
 

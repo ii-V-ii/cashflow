@@ -169,15 +169,25 @@ export async function deleteAccount(id: string): Promise<{ id: string }> {
   return { id }
 }
 
-/** PATCH /accounts/order — unnest 배열 조인 단일 UPDATE 1왕복 (API.md §3.6) */
+/**
+ * PATCH /accounts/order — unnest 배열 조인 단일 UPDATE (API.md §3.6).
+ * SEC-M4: 존재하지 않는 id가 섞이면 404로 거절하고 트랜잭션 전체를 롤백한다
+ * (부분 성공 silent 금지).
+ */
 export async function reorderAccounts(input: ReorderInput): Promise<{ updated: number }> {
   const sql = getDb()
   const ids = input.items.map((item) => item.id)
   const orders = input.items.map((item) => item.sortOrder)
-  const result = await sql`
-    UPDATE accounts a SET sort_order = v.sort_order
-    FROM (SELECT unnest(${ids}::uuid[]) AS id, unnest(${orders}::int[]) AS sort_order) v
-    WHERE a.id = v.id
-  `
-  return { updated: result.count }
+  const updated = await sql.begin(async (tx) => {
+    const result = await tx`
+      UPDATE accounts a SET sort_order = v.sort_order
+      FROM (SELECT unnest(${ids}::uuid[]) AS id, unnest(${orders}::int[]) AS sort_order) v
+      WHERE a.id = v.id
+    `
+    if (result.count !== input.items.length) {
+      throw new ApiError(404, "NOT_FOUND", "정렬 대상에 존재하지 않는 계좌가 있습니다")
+    }
+    return result.count
+  })
+  return { updated }
 }

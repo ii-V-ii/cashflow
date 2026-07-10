@@ -189,6 +189,24 @@ describe("PATCH /api/v1/categories/order", () => {
     const list = (await (await listCategories(new Request("http://localhost/x"))).json()).data
     expect(list.map((category: { name: string }) => category.name)).toEqual(["B", "A"])
   })
+
+  test("unknown id in batch → 404, nothing is applied (SEC-M4: 부분 성공 금지)", async () => {
+    const { body: a } = await createCategory({ name: "A" })
+
+    const response = await reorderCategories(
+      jsonRequest("PATCH", {
+        items: [
+          { id: a.data.id, sortOrder: 7 },
+          { id: "99999999-9999-4999-8999-999999999999", sortOrder: 8 },
+        ],
+      }),
+    )
+    expect(response.status).toBe(404)
+    expect((await response.json()).error.code).toBe("NOT_FOUND")
+
+    const rows = await sql`SELECT sort_order FROM public.categories WHERE id = ${a.data.id}`
+    expect(Number(rows[0].sort_order)).not.toBe(7)
+  })
 })
 
 describe("GET /api/v1/tags", () => {

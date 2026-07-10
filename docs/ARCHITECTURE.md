@@ -366,6 +366,10 @@ const sql = postgres(process.env.DATABASE_URL!, {  // transaction-mode pooler, �
 
 인증: Supabase 이메일 인증. 라우트 핸들러는 `@supabase/ssr` 쿠키 세션 검증(로컬 JWT 검증, DB 왕복 없음). 모든 테이블 RLS 활성(단일 사용자여도 `auth.uid()` 스코프), RPC는 `SECURITY INVOKER` 기본 — 상세는 DB.md.
 
+**인가 경계 (확정)**: 실질 인가 경계는 `guarded()`(`src/server/api-guard.ts`) — 세션 검증(401) + `OWNER_EMAIL` 소유자 이메일 검증(불일치 403, 미설정 시 전 요청 거부 fail-closed). RLS는 PostgREST/anon 노출 표면 방어 계층이며, 앱의 postgres.js 직결 경로에는 적용되지 않는다(테이블 소유자 롤) — 이는 의식적 아키텍처 결정이다(DB.md §5). 보조 가드: 프로덕션 기동 시 접속 롤이 슈퍼유저면 즉시 실패(`src/server/db/role-guard.ts`).
+
+보안 헤더: `next.config.ts` `headers()`로 전 라우트에 HSTS·`X-Content-Type-Options`·`X-Frame-Options`·`Referrer-Policy`·`Permissions-Policy` 적용(SEC-H2). **CSP는 후속 이슈** — Next.js 스크립트 nonce 구성(미들웨어 기반 per-request nonce)이 필요해 별도 트랙으로 분리한다.
+
 ---
 
 ## 9. pg_cron 잡 목록

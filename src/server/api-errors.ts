@@ -81,13 +81,13 @@ export function mapApiError(
     }
   }
 
-  if (code === "P0001") {
-    if (message.includes("저축 거래")) {
-      return { status: 422, code: "SAVING_CATEGORY_REQUIRED", message }
-    }
-    if (message.includes("NOT_FOUND")) {
-      return { status: 404, code: "NOT_FOUND", message: "자원을 찾을 수 없습니다" }
-    }
+  // RPC RAISE는 커스텀 SQLSTATE 규약으로 매핑한다 (SEC-L2: 메시지 substring 매칭 금지).
+  // CF422 = 저축 거래 정합성 위반, CF404 = 자원 없음 — DB.md §3 RAISE 규약과 1:1.
+  if (code === "CF422") {
+    return { status: 422, code: "SAVING_CATEGORY_REQUIRED", message }
+  }
+  if (code === "CF404") {
+    return { status: 404, code: "NOT_FOUND", message: "자원을 찾을 수 없습니다" }
   }
 
   // 상세는 서버 로그에만 — 응답에 노출 금지 (API.md §16 INTERNAL_ERROR)

@@ -142,17 +142,27 @@ export async function deleteCategory(id: string): Promise<{ id: string }> {
   return { id }
 }
 
-/** PATCH /categories/order — 3.6과 동일 unnest 단일 UPDATE (API.md §4.5) */
+/**
+ * PATCH /categories/order — 3.6과 동일 unnest 단일 UPDATE (API.md §4.5).
+ * SEC-M4: 존재하지 않는 id가 섞이면 404로 거절하고 트랜잭션 전체를 롤백한다
+ * (부분 성공 silent 금지).
+ */
 export async function reorderCategories(
   input: ReorderInput,
 ): Promise<{ updated: number }> {
   const sql = getDb()
   const ids = input.items.map((item) => item.id)
   const orders = input.items.map((item) => item.sortOrder)
-  const result = await sql`
-    UPDATE categories c SET sort_order = v.sort_order
-    FROM (SELECT unnest(${ids}::uuid[]) AS id, unnest(${orders}::int[]) AS sort_order) v
-    WHERE c.id = v.id
-  `
-  return { updated: result.count }
+  const updated = await sql.begin(async (tx) => {
+    const result = await tx`
+      UPDATE categories c SET sort_order = v.sort_order
+      FROM (SELECT unnest(${ids}::uuid[]) AS id, unnest(${orders}::int[]) AS sort_order) v
+      WHERE c.id = v.id
+    `
+    if (result.count !== input.items.length) {
+      throw new ApiError(404, "NOT_FOUND", "정렬 대상에 존재하지 않는 카테고리가 있습니다")
+    }
+    return result.count
+  })
+  return { updated }
 }

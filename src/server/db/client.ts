@@ -2,6 +2,8 @@ import "server-only"
 
 import postgres from "postgres"
 
+import { assertSafeDatabaseRole } from "@/server/db/role-guard"
+
 /**
  * Supabase transaction-mode pooler (port 6543) 연결 (ARCHITECTURE.md §8).
  * - prepare: false — transaction pooler는 prepared statement 미지원
@@ -20,6 +22,14 @@ export function getDb(): postgres.Sql {
       max: 1,
       idle_timeout: 20,
       connect_timeout: 10,
+    })
+    // 프로덕션 시작 가드(DB-C1/DB-C2): 슈퍼유저 접속이면 즉시 기동 실패(fail-fast).
+    // getDb()는 동기 API를 유지해야 하므로 커넥션당 1회 비동기 검증으로 수행한다.
+    void assertSafeDatabaseRole(client).catch((error) => {
+      console.error("[db] 접속 롤 검증 실패:", error)
+      if (process.env.NODE_ENV === "production") {
+        process.exit(1)
+      }
     })
   }
   return client

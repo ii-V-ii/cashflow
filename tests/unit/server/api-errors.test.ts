@@ -47,18 +47,26 @@ describe("mapApiError (API.md §16 에러 코드 일람)", () => {
     expect(mapApiError(pgError("22P02")).code).toBe("VALIDATION_ERROR")
   })
 
-  test("저축 거래 RPC 검증(P0001, 입금 계좌 메시지) → 422 SAVING_CATEGORY_REQUIRED", () => {
+  test("저축 정합성 RPC 검증(SQLSTATE CF422) → 422 SAVING_CATEGORY_REQUIRED, 메시지 유지", () => {
     const mapped = mapApiError(
-      new RpcError("P0001", "저축 거래는 입금 계좌(to_account_id)가 필요합니다"),
+      new RpcError("CF422", "저축 거래는 입금 계좌(to_account_id)가 필요합니다"),
     )
     expect(mapped.status).toBe(422)
     expect(mapped.code).toBe("SAVING_CATEGORY_REQUIRED")
+    expect(mapped.message).toContain("입금 계좌")
   })
 
-  test("TRANSACTION_NOT_FOUND(P0001) → 404 NOT_FOUND", () => {
-    const mapped = mapApiError(new RpcError("P0001", "TRANSACTION_NOT_FOUND"))
+  test("자원 없음 RPC(SQLSTATE CF404) → 404 NOT_FOUND", () => {
+    const mapped = mapApiError(new RpcError("CF404", "TRANSACTION_NOT_FOUND"))
     expect(mapped.status).toBe(404)
     expect(mapped.code).toBe("NOT_FOUND")
+  })
+
+  test("규약 외 P0001(메시지 substring 매칭 제거, SEC-L2)은 500으로 봉인된다", () => {
+    const mapped = mapApiError(new RpcError("P0001", "저축 거래 관련 임의 메시지"))
+    expect(mapped.status).toBe(500)
+    expect(mapped.code).toBe("INTERNAL_ERROR")
+    expect(mapped.message).not.toContain("저축")
   })
 
   test("unknown error → 500 INTERNAL_ERROR without leaking details", () => {

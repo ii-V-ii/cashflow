@@ -56,6 +56,8 @@ export default defineConfig({
       NEXT_PUBLIC_SUPABASE_URL: LOCAL_SUPABASE.url,
       NEXT_PUBLIC_SUPABASE_ANON_KEY: LOCAL_SUPABASE.anonKey,
       SUPABASE_SERVICE_ROLE_KEY: LOCAL_SUPABASE.serviceRoleKey,
+      // guarded() 소유자 검증(SEC-H1) — E2E 시드 사용자와 일치
+      OWNER_EMAIL: E2E_USER.email,
     },
   },
 })

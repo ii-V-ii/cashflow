@@ -106,6 +106,22 @@ describe("createTransactionSchema", () => {
     ).toBe(true)
   })
 
+  test("caps amount at 10조 (SEC-M2)", () => {
+    const MAX_KRW = 10_000_000_000_000
+    expect(
+      createTransactionSchema.safeParse({ ...validBase, amount: MAX_KRW })
+        .success,
+    ).toBe(true)
+    const over = createTransactionSchema.safeParse({
+      ...validBase,
+      amount: MAX_KRW + 1,
+    })
+    expect(over.success).toBe(false)
+    if (!over.success) {
+      expect(over.error.issues[0]?.message).toContain("10조")
+    }
+  })
+
   test("accepts tags array of names", () => {
     const result = createTransactionSchema.safeParse({
       ...validBase,

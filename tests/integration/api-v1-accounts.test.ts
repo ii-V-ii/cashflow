@@ -213,4 +213,23 @@ describe("PATCH /api/v1/accounts/order", () => {
     const response = await reorderAccounts(jsonRequest("PATCH", { items: [] }))
     expect(response.status).toBe(400)
   })
+
+  test("unknown id in batch → 404, nothing is applied (SEC-M4: 부분 성공 금지)", async () => {
+    const { body: a } = await createAccount({ name: "A" })
+
+    const response = await reorderAccounts(
+      jsonRequest("PATCH", {
+        items: [
+          { id: a.data.id, sortOrder: 7 },
+          { id: "99999999-9999-4999-8999-999999999999", sortOrder: 8 },
+        ],
+      }),
+    )
+    expect(response.status).toBe(404)
+    expect((await response.json()).error.code).toBe("NOT_FOUND")
+
+    // 존재하는 항목도 반영되지 않아야 한다 (트랜잭션 롤백)
+    const rows = await sql`SELECT sort_order FROM public.accounts WHERE id = ${a.data.id}`
+    expect(Number(rows[0].sort_order)).not.toBe(7)
+  })
 })

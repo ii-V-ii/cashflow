@@ -6,3 +6,6 @@ import { getTestDatabaseUrl } from "./helpers/db"
  * (.env.local의 원격 DATABASE_URL이 셸 환경에 노출되어 있어도 무시된다.)
  */
 process.env.DATABASE_URL = getTestDatabaseUrl()
+
+// guarded() 소유자 검증(SEC-H1) — 통합 테스트의 mock 세션 이메일과 일치시킨다
+process.env.OWNER_EMAIL = "owner@local.test"
