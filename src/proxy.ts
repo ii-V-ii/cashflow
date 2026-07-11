@@ -71,6 +71,6 @@ export default async function proxy(request: NextRequest) {
 export const config = {
   // 정적 자산·PWA 파일 제외
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|manifest.json|sw.js|icons/|.*\\.(?:png|svg|ico|jpg|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|robots.txt|manifest.webmanifest|manifest.json|sw.js|icons/|.*\\.(?:png|svg|ico|jpg|webp)$).*)",
   ],
 }

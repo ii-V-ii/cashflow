@@ -26,7 +26,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
+  // maximumScale 미지정 — 핀치 줌 차단은 WCAG 1.4.4 위반 (Lighthouse meta-viewport)
   themeColor: "#0f172a",
 };
 

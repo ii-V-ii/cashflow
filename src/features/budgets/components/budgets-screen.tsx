@@ -1,12 +1,26 @@
 "use client"
 
+import dynamic from "next/dynamic"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useCallback } from "react"
 
 import { AnnualGridView } from "@/features/budgets/components/annual-grid-view"
-import { AnnualOverview } from "@/features/budgets/components/annual-overview"
 import { MonthlyBudget } from "@/features/budgets/components/monthly-budget"
 import { cn } from "@/lib/utils"
+
+/** Recharts는 무겁다 — next/dynamic lazy 로드로 초기 번들에서 제외 (성능 예산, reports-screen과 동일 패턴) */
+const AnnualOverview = dynamic(
+  () =>
+    import("@/features/budgets/components/annual-overview").then(
+      (mod) => mod.AnnualOverview,
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-56 animate-pulse rounded-lg bg-surface-sunken" aria-hidden />
+    ),
+  },
+)
 
 const TABS = [
   { value: "monthly", label: "월별" },

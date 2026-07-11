@@ -13,7 +13,6 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
 
-import { createSupabaseBrowserClient } from "@/lib/supabase-browser"
 import { useToastStore } from "@/stores/toast-store"
 
 const MENU_LINKS = [
@@ -37,6 +36,8 @@ export function MenuScreen() {
   async function handleSignOut() {
     setIsSigningOut(true)
     try {
+      // Supabase 클라이언트(~51kb gz)는 로그아웃 시에만 필요 — 지연 로드로 초기 번들 예산(300kb) 준수
+      const { createSupabaseBrowserClient } = await import("@/lib/supabase-browser")
       const supabase = createSupabaseBrowserClient()
       const { error } = await supabase.auth.signOut()
       if (error) throw error

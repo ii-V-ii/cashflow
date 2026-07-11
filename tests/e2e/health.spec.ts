@@ -33,3 +33,29 @@ test("미인증 홈 접근은 로그인 페이지로 이동한다", async ({ pag
   await page.waitForURL("**/login")
   await expect(page.locator("h1")).toHaveText("금전출납부")
 })
+
+test("robots.txt는 인증 리다이렉트 없이 전체 차단 정책을 반환한다", async ({
+  request,
+}) => {
+  const response = await request.get("/robots.txt", {
+    maxRedirects: 0,
+  })
+
+  expect(response.status()).toBe(200)
+  const body = await response.text()
+  expect(body).toContain("User-Agent: *")
+  expect(body).toContain("Disallow: /")
+})
+
+test("PWA 필수 자원이 인증 없이 제공된다 (manifest·아이콘)", async ({
+  request,
+}) => {
+  for (const path of [
+    "/manifest.json",
+    "/icons/icon-192x192.png",
+    "/icons/icon-512x512.png",
+  ]) {
+    const response = await request.get(path, { maxRedirects: 0 })
+    expect(response.status(), path).toBe(200)
+  }
+})
