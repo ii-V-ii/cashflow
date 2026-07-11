@@ -7,6 +7,28 @@ import { E2E_USER, LOCAL_SUPABASE } from "../../playwright.config"
  * E2E 공용 헬퍼 — 시드 초기화(멱등)·로그인·잔액 조회.
  * 시드: E2E은행 100,000원 / E2E적금 0원, 카테고리 식비·저축(saving)·급여.
  */
+/** 부모 카테고리 아래 소분류 1개 삽입 — resetSeedData와 동일한 로컬 호스트 가드 적용 */
+export async function seedChildCategory(
+  parentName: string,
+  childName: string,
+): Promise<void> {
+  const { hostname } = new URL(LOCAL_SUPABASE.databaseUrl)
+  if (hostname !== "127.0.0.1" && hostname !== "localhost") {
+    throw new Error(`E2E must target a local database. Got host: ${hostname}`)
+  }
+
+  const sql = postgres(LOCAL_SUPABASE.databaseUrl, { prepare: false, max: 1 })
+  try {
+    await sql`
+      INSERT INTO public.categories (name, type, expense_kind, parent_id, sort_order)
+      SELECT ${childName}, type, expense_kind, id, 0
+      FROM public.categories WHERE name = ${parentName} AND parent_id IS NULL
+    `
+  } finally {
+    await sql.end()
+  }
+}
+
 export async function resetSeedData(): Promise<void> {
   const { hostname } = new URL(LOCAL_SUPABASE.databaseUrl)
   if (hostname !== "127.0.0.1" && hostname !== "localhost") {

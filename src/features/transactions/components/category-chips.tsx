@@ -86,13 +86,14 @@ export function CategoryChips({
         {groups.map(({ parent, children }) => {
           const isSelected = selectedId === parent.id
           const isExpanded = expandedGroup?.parent.id === parent.id
+          // aria-expanded는 role="option"에 비표준(WAI-ARIA 1.2) — 펼침 상태는 data-expanded로만 노출
           return (
             <button
               key={parent.id}
               type="button"
               role="option"
               aria-selected={isSelected}
-              aria-expanded={children.length > 0 ? isExpanded : undefined}
+              data-expanded={children.length > 0 ? isExpanded : undefined}
               onClick={() => onSelect(isSelected ? null : parent.id)}
               data-testid={`category-chip-${parent.name}`}
               className={cn(

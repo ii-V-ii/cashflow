@@ -114,6 +114,6 @@ describe("TransactionForm 카테고리 칩", () => {
 
     expect(screen.getByTestId("category-child-row")).toBeInTheDocument()
     expect(screen.getByTestId("category-chip-외식")).toHaveAttribute("aria-selected", "true")
-    expect(screen.getByTestId("category-chip-식비")).toHaveAttribute("aria-expanded", "true")
+    expect(screen.getByTestId("category-chip-식비")).toHaveAttribute("data-expanded", "true")
   })
 })

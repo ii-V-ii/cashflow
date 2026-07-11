@@ -1,8 +1,5 @@
 import { expect, test, type Page } from "@playwright/test"
-import postgres from "postgres"
-
-import { LOCAL_SUPABASE } from "../../playwright.config"
-import { login, readAccountBalances, resetSeedData } from "./helpers"
+import { login, readAccountBalances, resetSeedData, seedChildCategory } from "./helpers"
 
 /**
  * Phase 1 QA 보강 시나리오:
@@ -164,17 +161,8 @@ test("(d) 금액 0은 에러 표시 + 저장 요청 미발생, 음수는 서버�
 test("(f) 대분류 탭 → 소분류 칩 확장 → 소분류로 저장 → 목록에 소분류명 표시", async ({
   page,
 }) => {
-  // 시드에는 소분류가 없으므로 식비 아래 '외식'을 직접 삽입한다
-  const sql = postgres(LOCAL_SUPABASE.databaseUrl, { prepare: false, max: 1 })
-  try {
-    await sql`
-      INSERT INTO public.categories (name, type, expense_kind, parent_id, sort_order)
-      SELECT '외식', 'expense', 'consumption', id, 0
-      FROM public.categories WHERE name = '식비'
-    `
-  } finally {
-    await sql.end()
-  }
+  // 시드에는 소분류가 없으므로 식비 아래 '외식'을 삽입한다 (helpers의 호스트 가드 공유)
+  await seedChildCategory("식비", "외식")
 
   await login(page)
   await openQuickAdd(page)
