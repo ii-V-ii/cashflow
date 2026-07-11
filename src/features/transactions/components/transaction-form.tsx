@@ -7,6 +7,7 @@ import { useForm } from "react-hook-form"
 
 import { useAccounts } from "@/features/accounts/hooks/use-accounts"
 import { useCategories } from "@/features/categories/hooks/use-categories"
+import { CategoryChips } from "@/features/transactions/components/category-chips"
 import { formatKrw } from "@/lib/format"
 import {
   createTransactionSchema,
@@ -202,34 +203,13 @@ export function TransactionForm({
         </p>
       )}
 
-      {/* ③ 카테고리 칩 한 줄 (1탭 선택) */}
-      {categoryChips.length > 0 && (
-        <div className="flex gap-1.5 overflow-x-auto pb-1" role="listbox" aria-label="카테고리">
-          {categoryChips.map((category) => (
-            <button
-              key={category.id}
-              type="button"
-              role="option"
-              aria-selected={categoryId === category.id}
-              onClick={() =>
-                form.setValue("categoryId", categoryId === category.id ? null : category.id)
-              }
-              data-testid={`category-chip-${category.name}`}
-              className={cn(
-                "h-11 shrink-0 rounded-full border border-hairline px-4 text-sm font-medium text-ink-muted transition-colors",
-                categoryId === category.id &&
-                  (category.expenseKind === "saving"
-                    ? "border-saving bg-saving-subtle text-saving-fg"
-                    : type === "income"
-                      ? "border-income bg-income-subtle text-income-fg"
-                      : "border-expense bg-expense-subtle text-expense-fg"),
-              )}
-            >
-              {category.name}
-            </button>
-          ))}
-        </div>
-      )}
+      {/* ③ 카테고리 칩 — 1행 대분류, 선택 시 소분류 행 확장 (1~2탭 선택) */}
+      <CategoryChips
+        categories={categoryChips}
+        selectedId={categoryId ?? null}
+        type={type}
+        onSelect={(id) => form.setValue("categoryId", id)}
+      />
 
       {/* ④ 계좌 (최근 사용 기본값) */}
       <label className="flex flex-col gap-1.5 text-xs font-medium text-ink-muted">

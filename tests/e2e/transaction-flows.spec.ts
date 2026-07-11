@@ -1,5 +1,7 @@
 import { expect, test, type Page } from "@playwright/test"
+import postgres from "postgres"
 
+import { LOCAL_SUPABASE } from "../../playwright.config"
 import { login, readAccountBalances, resetSeedData } from "./helpers"
 
 /**
@@ -157,6 +159,46 @@ test("(d) 금액 0은 에러 표시 + 저장 요청 미발생, 음수는 서버�
   const negativeBody = await negativeResponse.json()
   expect(negativeBody.success).toBe(false)
   expect(negativeBody.error.code).toBe("VALIDATION_ERROR")
+})
+
+test("(f) 대분류 탭 → 소분류 칩 확장 → 소분류로 저장 → 목록에 소분류명 표시", async ({
+  page,
+}) => {
+  // 시드에는 소분류가 없으므로 식비 아래 '외식'을 직접 삽입한다
+  const sql = postgres(LOCAL_SUPABASE.databaseUrl, { prepare: false, max: 1 })
+  try {
+    await sql`
+      INSERT INTO public.categories (name, type, expense_kind, parent_id, sort_order)
+      SELECT '외식', 'expense', 'consumption', id, 0
+      FROM public.categories WHERE name = '식비'
+    `
+  } finally {
+    await sql.end()
+  }
+
+  await login(page)
+  await openQuickAdd(page)
+
+  // 1행에는 대분류만 — 소분류는 아직 보이지 않는다
+  await expect(page.getByTestId("category-chip-식비")).toBeVisible()
+  await expect(page.getByTestId("category-chip-외식")).toBeHidden()
+
+  await page.getByTestId("amount-input").fill("7000")
+  await page.getByTestId("category-chip-식비").click()
+
+  // 대분류 선택 → 소분류 행 확장 → 소분류 선택
+  await expect(page.getByTestId("category-child-row")).toBeVisible()
+  await page.getByTestId("category-chip-외식").click()
+  await expect(page.getByTestId("category-chip-외식")).toHaveAttribute(
+    "aria-selected",
+    "true",
+  )
+
+  await Promise.all([waitForCreate(page), page.getByTestId("save-transaction").click()])
+
+  // 내용 미입력 → 선택한 소분류명이 내용으로 저장돼 목록에 표시된다
+  await page.goto("/transactions")
+  await expect(page.getByTestId("transaction-row").first()).toContainText("외식")
 })
 
 test.describe("(e) 모바일 뷰포트 375px", () => {
