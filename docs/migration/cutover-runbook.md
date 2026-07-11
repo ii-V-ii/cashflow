@@ -74,3 +74,9 @@ ALTER FUNCTION legacy.rls_auto_enable() SET SCHEMA public;
 - 방식: 프로덕션 백업 덤프를 로컬 `cashflow_prod_sim` DB에 복원(원격과 동일한 public 상태) + auth 스텁 → `cutover.sh` 풀런
 - 결과: exit 0, 총 4초. 이동 15테이블 → 마이그레이션 10개 적용(pg_cron 은 sim 제약으로 스킵 WARNING — 원격 postgres DB에서는 정상 등록 예상) → 변환 778 거래 등 전건 → FIFO 보정 2건 → 대사(필수 게이트 전부 통과, 예상 차이 6건만) → 도래분 0건 처리·자산 스냅샷 5건
 - 잔여 리스크: pg_cron 등록과 app.owner_email 권한은 호스팅 환경에서만 최종 확인 가능(둘 다 실패해도 컷오버 자체는 안전하게 완료되며 수동 조치로 마무리)
+
+## 부록: app.owner_email GUC — 설정 불가 확정 및 대응 (2026-07-12)
+
+- `ALTER DATABASE/ROLE ... SET app.owner_email`은 호스팅 Supabase에서 postgres 롤 권한으로 불가(SQL Editor 포함 — DB 소유자가 supabase_admin이기 때문). **설정하지 않은 채 운영 확정.**
+- 영향 없음: 앱 인가 경계는 Vercel의 guarded()(세션+OWNER_EMAIL env)이며, RLS는 PostgREST 표면 전용. GUC 미설정 시 RLS는 fail-closed(전체 거부)로 동작 — 의도된 안전 상태.
+- 향후 supabase-js 클라이언트 직접 조회(realtime 등)를 도입할 때: GUC 대신 `app_config(owner_email)` 단일행 테이블을 만들고 RLS 정책이 이를 참조하도록 마이그레이션으로 전환한다(권한 문제 없음).
