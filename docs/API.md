@@ -395,7 +395,8 @@ Category = { id, name, type: 'income'|'expense',
   dailyTotals: { date, income, expense }[],         // 거래 캘린더 (해당 월 전체)
   budget: {                                         // 예산 소진율 위젯 — 해당 월 예산 없으면 null
     plannedTotal, actualTotal, ratio },
-  recentTransactions: Transaction[] }               // 최근 5건
+  recentTransactions: Transaction[] }               // 최근 5건 — 선택 월 범위 + KST 오늘 이하 날짜만
+                                                     // (미래 월 조회 시 항상 빈 배열 — 의도된 동작)
 ```
 
 **구현 메모**: RPC `get_dashboard(p_year, p_month)` **1왕복** (DB.md §3.9와 파라미터 일치) — 기존 `/dashboard` + `/dashboard/daily-totals` 2개 API·5쿼리를 단일 jsonb 반환으로 흡수.

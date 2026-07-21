@@ -1,6 +1,6 @@
 "use client"
 
-import { formatKrw, formatSignedKrw } from "@/lib/format"
+import { formatDateHeading, formatKrw, formatSignedKrw } from "@/lib/format"
 import { isOptimisticId } from "@/lib/optimistic/transactions"
 import { cn } from "@/lib/utils"
 import {
@@ -37,12 +37,11 @@ function groupByDate(items: TransactionDto[]): DayGroup[] {
   return [...groups.values()]
 }
 
-function formatDateHeading(date: string): string {
-  const [, month, day] = date.split("-").map(Number)
-  const weekday = ["일", "월", "화", "수", "목", "금", "토"][
-    new Date(`${date}T00:00:00`).getDay()
-  ]
-  return `${month}월 ${day}일 (${weekday})`
+interface TransactionListProps {
+  items: TransactionDto[]
+  onSelect: (transaction: TransactionDto) => void
+  /** 빈 상태 문구 — 호출 맥락에 맞게 오버라이드(기본값 = 월 원장 맥락) */
+  emptyMessage?: string
 }
 
 /**
@@ -51,14 +50,12 @@ function formatDateHeading(date: string): string {
 export function TransactionList({
   items,
   onSelect,
-}: {
-  items: TransactionDto[]
-  onSelect: (transaction: TransactionDto) => void
-}) {
+  emptyMessage = "이 달의 거래가 없습니다",
+}: TransactionListProps) {
   if (items.length === 0) {
     return (
       <div className="flex flex-col items-center gap-2 py-16 text-center">
-        <p className="text-sm text-ink-muted">이 달의 거래가 없습니다</p>
+        <p className="text-sm text-ink-muted">{emptyMessage}</p>
         <p className="text-xs text-ink-muted">
           하단 ＋ 버튼으로 첫 거래를 기록해보세요
         </p>

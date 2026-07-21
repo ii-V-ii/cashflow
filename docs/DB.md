@@ -889,13 +889,22 @@ RETURN jsonb_build_object(
                                        planned 0 → null (get_budget_actuals 규약)),
   'calendar',        (SELECT jsonb_agg(jsonb_build_object('date', date, 'income', Σ, 'expense', Σ))
                       FROM transactions WHERE 해당 월 AND status='applied' GROUP BY date),
-  'recent_transactions', 최근 5건 (pending 포함 — Transaction DTO 인라인 조립)
+  'recent_transactions', 최근 5건 — **선택 월(p_year/p_month) 범위 내 + KST 오늘
+                         ((now() AT TIME ZONE 'Asia/Seoul')::date) 이하 날짜만**
+                         (pending 포함 — Transaction DTO 인라인 조립, 마이그레이션 `20260721000010`)
 )
 ```
 
 > **investment/budget_usage 키는 camelCase**(DTO 그대로 통과 — `dashboard-mapping.ts`).
 
 > **캘린더 pending 제외(확정)**: 캘린더 집계는 `status='applied'` 거래만 포함한다(레거시 동일). pending(예정) 거래는 캘린더·집계에 나타나지 않으며, **거래 목록 화면에서만 '예정' 배지로 표시**한다.
+
+> **recent_transactions 범위(확정, `20260721000010`)**: `date >= v_start AND date < v_end AND date <= v_today`.
+> status 필터는 두지 않는다 — 과거 날짜의 pending(지연 처리된 정기거래 등)은 거래 목록과
+> 동일하게 '예정' 배지로 계속 노출한다. 미래 pending은 날짜 조건만으로 이미 배제된다.
+> **의도된 동작**: 미래 월(`p_year`/`p_month`가 KST 오늘보다 뒤)을 조회하면 `v_start > v_today`가
+> 되어 이 위젯은 항상 빈 배열을 반환한다 — 다른 위젯(캘린더·예산·투자 등)은 이 규칙의 영향을
+> 받지 않는다.
 
 ### 3.10 get_monthly_settlement(p_year int, p_month int) → jsonb
 

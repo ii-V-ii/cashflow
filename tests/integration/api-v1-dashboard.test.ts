@@ -64,7 +64,10 @@ beforeEach(async () => {
       ('income',  500000, '급여',  'applied', ${salaryId}, ${bankId}, '2026-07-01'),
       ('expense',  30000, '식비1', 'applied', ${foodId},   ${bankId}, '2026-07-03'),
       ('expense',  20000, '식비2', 'applied', ${foodId},   ${bankId}, '2026-07-03'),
-      ('expense', 999999, '예정',  'pending', ${foodId},   ${bankId}, '2026-07-20')
+      -- 먼 미래(오늘 기준 항상 미래) pending — get_dashboard.recent_transactions가
+      -- 미래 날짜를 배제하는지 검증하는 시드. 2026-07의 결산/캘린더 집계에는
+      -- status='pending'이라 애초에 잡히지 않으므로 다른 테스트에 영향 없다.
+      ('expense', 999999, '예정',  'pending', ${foodId},   ${bankId}, '2099-07-20')
   `
 })
 
@@ -172,9 +175,53 @@ describe("GET /api/v1/dashboard", () => {
 
     const recent = body.data.recentTransactions
     expect(recent.length).toBeGreaterThan(0)
-    expect(recent[0].description).toBe("예정")
+    // '예정'(2099-07-20, pending)은 2026-07 밖의 먼 미래 날짜로 시드되어
+    // recent_transactions(선택 월 + 오늘 이하)에서 항상 배제된다 — 미래/월외
+    // 배제 자체는 아래 전용 테스트에서 검증하고, 여기서는 DTO 형태만 확인한다.
+    // 동률(식비1·식비2 동일 날짜) 순서는 단일 INSERT 문 내 created_at이 동일할
+    // 수 있어 보장되지 않으므로 recent[0]의 정확한 식별자는 단언하지 않는다.
+    expect(recent.some((tx: { description: string }) => tx.description === "예정")).toBe(
+      false,
+    )
+    expect(["식비1", "식비2"]).toContain(recent[0].description)
     expect(recent[0].account.name).toBe("은행")
     expect(recent[0].tags).toEqual([])
+  })
+
+  test("최근 거래는 선택 월(v_start~v_end) 내 + 오늘(KST) 이하 날짜만 반환한다 (미래·월외 배제)", async () => {
+    // 실행 시점에 독립적으로 만들기 위해 DB의 "KST 오늘"을 조회해 기준으로 삼는다
+    // (recurring-rpc.test.ts와 동일 패턴 — 실행 시점 독립).
+    const [{ today, y, m }] = await sql`
+      SELECT
+        to_char((now() AT TIME ZONE 'Asia/Seoul')::date, 'YYYY-MM-DD')   AS today,
+        EXTRACT(YEAR  FROM (now() AT TIME ZONE 'Asia/Seoul')::date)::int AS y,
+        EXTRACT(MONTH FROM (now() AT TIME ZONE 'Asia/Seoul')::date)::int AS m
+    `
+
+    // accounts/categories는 유지한 채 거래만 초기화 (bankId/foodId 재사용)
+    await sql`TRUNCATE TABLE public.transaction_tags, public.transactions CASCADE`
+    await sql`
+      INSERT INTO public.transactions
+        (type, amount, description, status, category_id, account_id, date) VALUES
+        ('expense', 10000, '오늘거래',   'applied', ${foodId}, ${bankId}, ${today}::date),
+        ('expense', 20000, '미래거래',   'pending', ${foodId}, ${bankId}, (${today}::date + 1)),
+        ('expense', 30000, '지난달거래', 'applied', ${foodId}, ${bankId},
+          (date_trunc('month', ${today}::date)::date - 1))
+    `
+
+    const { body } = await fetchDashboard(`?year=${y}&month=${m}`)
+    const recent = body.data.recentTransactions
+    const descriptions = recent.map((tx: { description: string }) => tx.description)
+
+    expect(descriptions).toContain("오늘거래")
+    expect(descriptions).not.toContain("미래거래")
+    expect(descriptions).not.toContain("지난달거래")
+
+    const todayTx = recent.find(
+      (tx: { description: string }) => tx.description === "오늘거래",
+    )
+    expect(todayTx.account.name).toBe("은행")
+    expect(todayTx.tags).toEqual([])
   })
 
   test("year/month 미지정 시 현재 연·월 기본값으로 200", async () => {
