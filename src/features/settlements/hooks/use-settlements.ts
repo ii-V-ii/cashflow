@@ -11,11 +11,12 @@ import { qk } from "@/lib/query-keys"
 const SETTLEMENT_STALE_TIME_MS = 60_000
 
 /** 월 결산 — get_monthly_settlement RPC 1왕복 (API.md §7.1) */
-export function useMonthlySettlement(ym: string) {
+export function useMonthlySettlement(ym: string, enabled = true) {
   return useQuery({
     queryKey: qk.settlements.monthly(ym),
     queryFn: () => getMonthlySettlement(ym),
     staleTime: SETTLEMENT_STALE_TIME_MS,
+    enabled,
   })
 }
 

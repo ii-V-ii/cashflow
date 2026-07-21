@@ -10,6 +10,16 @@ describe("query key factory", () => {
     expect(key.slice(0, 1)).toEqual(qk.transactions.all)
   })
 
+  test("monthPage keys default to page 1 and stay prefixed by month(ym) (prefix invalidation)", () => {
+    const defaultPage = qk.transactions.monthPage("2026-07")
+    expect(defaultPage).toEqual(["transactions", "month", "2026-07", 1])
+    expect(defaultPage.slice(0, 3)).toEqual(qk.transactions.month("2026-07"))
+
+    const page2 = qk.transactions.monthPage("2026-07", 2)
+    expect(page2).toEqual(["transactions", "month", "2026-07", 2])
+    expect(page2.slice(0, 3)).toEqual(qk.transactions.month("2026-07"))
+  })
+
   test("list keys embed filter, page, and limit for cache identity", () => {
     const filter = { type: "expense" as const }
 

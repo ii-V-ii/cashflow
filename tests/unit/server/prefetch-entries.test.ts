@@ -52,26 +52,41 @@ describe("dashboardPrefetchEntries — 홈", () => {
 })
 
 describe("transactionsPrefetchEntries — 거래", () => {
-  test("기본 진입: 월 원장 + 계좌 + 지출 카테고리 (화면 훅 키와 일치)", () => {
+  test("기본 진입: 월 원장(1페이지) + 월 결산 + 계좌 + 지출 카테고리 (화면 훅 키와 일치)", () => {
     const ym = currentYmSeoul()
 
     const entries = transactionsPrefetchEntries({})
 
-    // 화면: useTransactionsMonth(ym), 폼: useAccounts(), useCategories("expense")
+    // 화면: useTransactionsMonth(ym, 1), useMonthlySettlement(ym), 폼: useAccounts(), useCategories("expense")
     expectKeys(entries, [
-      qk.transactions.month(ym),
+      qk.transactions.monthPage(ym, 1),
+      qk.settlements.monthly(ym),
       qk.accounts.list(),
       qk.categories.list("expense"),
     ])
   })
 
-  test("ym 파라미터를 그대로 반영한다", () => {
+  test("ym 파라미터를 그대로 반영한다 (1페이지 키)", () => {
     const entries = transactionsPrefetchEntries({ ym: "2026-03" })
 
-    expect(hashes(entries)).toContain(hashKey(qk.transactions.month("2026-03")))
+    expect(hashes(entries)).toContain(hashKey(qk.transactions.monthPage("2026-03", 1)))
+    expect(hashes(entries)).toContain(hashKey(qk.settlements.monthly("2026-03")))
   })
 
-  test("필터 진입: 화면의 list 키({ type, search: search || undefined }, page, 20)와 해시 일치", () => {
+  test("비필터 + page=2: monthPage(ym, 2)로 프리페치한다 (화면 훅 useTransactionsMonth(ym, page)와 일치 — 이중 페치 방지)", () => {
+    const ym = currentYmSeoul()
+    const entries = transactionsPrefetchEntries({ page: "2" })
+
+    const keys = hashes(entries)
+    expect(keys).toContain(hashKey(qk.transactions.monthPage(ym, 2)))
+    // page 1 키는 만들어지지 않는다 — 클라이언트는 실제 page(2)만 구독한다
+    expect(keys).not.toContain(hashKey(qk.transactions.monthPage(ym, 1)))
+    // 결산은 페이지와 무관하게 월 단위이므로 그대로 유지된다
+    expect(keys).toContain(hashKey(qk.settlements.monthly(ym)))
+  })
+
+  test("필터 진입: 화면의 list 키({ type, search: search || undefined }, page, 20)와 해시 일치, 월 원장·월 결산은 게이팅된다", () => {
+    const ym = currentYmSeoul()
     const entries = transactionsPrefetchEntries({
       type: "expense",
       search: "커피",
@@ -84,7 +99,11 @@ describe("transactionsPrefetchEntries — 거래", () => {
       2,
       20,
     )
-    expect(hashes(entries)).toContain(hashKey(screenListKey))
+    const keys = hashes(entries)
+    expect(keys).toContain(hashKey(screenListKey))
+    // 필터 모드에서는 월 원장·월 결산 프리페치가 불필요하다 (화면 훅의 enabled: tab==='all' && !isFiltered 재현)
+    expect(keys).not.toContain(hashKey(qk.transactions.monthPage(ym, 1)))
+    expect(keys).not.toContain(hashKey(qk.settlements.monthly(ym)))
   })
 
   test("type만 있는 필터도 list 키 해시가 일치한다 (undefined 필드 해시 동등성)", () => {
@@ -98,14 +117,15 @@ describe("transactionsPrefetchEntries — 거래", () => {
     expect(hashes(entries)).toContain(hashKey(screenListKey))
   })
 
-  test("정기 탭 진입: 월 원장 대신 정기 규칙 목록", () => {
+  test("정기 탭 진입: 월 원장·월 결산 대신 정기 규칙 목록", () => {
     const entries = transactionsPrefetchEntries({ tab: "recurring" })
 
     const keys = hashes(entries)
     expect(keys).toContain(hashKey(qk.recurring.list()))
     expect(keys).not.toContain(
-      hashKey(qk.transactions.month(currentYmSeoul())),
+      hashKey(qk.transactions.monthPage(currentYmSeoul(), 1)),
     )
+    expect(keys).not.toContain(hashKey(qk.settlements.monthly(currentYmSeoul())))
   })
 
   test("잘못된 ym/type/page는 해당 엔트리만 조용히 제외한다 (클라이언트 페치 폴백)", () => {
@@ -115,7 +135,7 @@ describe("transactionsPrefetchEntries — 거래", () => {
       page: "abc",
     })
 
-    // 월 원장·필터 목록은 제외되지만 계좌·카테고리는 유지
+    // 월 원장·월 결산·필터 목록은 제외되지만 계좌·카테고리는 유지
     expectKeys(entries, [qk.accounts.list(), qk.categories.list("expense")])
   })
 })

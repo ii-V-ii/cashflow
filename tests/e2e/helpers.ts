@@ -29,6 +29,75 @@ export async function seedChildCategory(
   }
 }
 
+/**
+ * 월 원장 100건 초과 회귀 시나리오용 벌크 시드 — SQL 직접 insert (UI 반복 클릭 금지).
+ * i=0 거래만 해당 월의 1일에 꽂아 "월초 거래"로 식별 가능하게 하고, 나머지는 2일부터
+ * 순환 배치해 날짜가 겹치지 않도록 한다. resetSeedData/seedChildCategory와 동일한
+ * 로컬 호스트 가드를 공유한다.
+ */
+export async function seedTransactions(
+  count: number,
+  ym: string,
+  options: { accountName?: string; categoryName?: string; amount?: number } = {},
+): Promise<{ total: number; earliestDescription: string }> {
+  const { hostname } = new URL(LOCAL_SUPABASE.databaseUrl)
+  if (hostname !== "127.0.0.1" && hostname !== "localhost") {
+    throw new Error(`E2E must target a local database. Got host: ${hostname}`)
+  }
+
+  const accountName = options.accountName ?? "E2E은행"
+  const categoryName = options.categoryName ?? "식비"
+  const amount = options.amount ?? 1000
+  const earliestDescription = "월초 회귀 거래"
+
+  const sql = postgres(LOCAL_SUPABASE.databaseUrl, { prepare: false, max: 1 })
+  try {
+    const [account] = await sql`
+      SELECT id FROM public.accounts WHERE name = ${accountName} LIMIT 1
+    `
+    const [category] = await sql`
+      SELECT id FROM public.categories
+      WHERE name = ${categoryName} AND parent_id IS NULL LIMIT 1
+    `
+    if (!account || !category) {
+      throw new Error(
+        `seedTransactions: 계좌(${accountName})/카테고리(${categoryName})를 찾을 수 없습니다 — resetSeedData를 먼저 호출하세요.`,
+      )
+    }
+
+    const [year, month] = ym.split("-").map(Number)
+    const lastDay = new Date(year, month, 0).getDate()
+
+    const rows = Array.from({ length: count }, (_, i) => {
+      const day = i === 0 ? 1 : 2 + ((i - 1) % Math.max(lastDay - 1, 1))
+      return {
+        type: "expense" as const,
+        amount,
+        description: i === 0 ? earliestDescription : `시드거래${i}`,
+        category_id: category.id as string,
+        account_id: account.id as string,
+        date: `${ym}-${String(day).padStart(2, "0")}`,
+      }
+    })
+
+    await sql`
+      INSERT INTO public.transactions ${sql(
+        rows,
+        "type",
+        "amount",
+        "description",
+        "category_id",
+        "account_id",
+        "date",
+      )}
+    `
+  } finally {
+    await sql.end()
+  }
+
+  return { total: count * amount, earliestDescription }
+}
+
 export async function resetSeedData(): Promise<void> {
   const { hostname } = new URL(LOCAL_SUPABASE.databaseUrl)
   if (hostname !== "127.0.0.1" && hostname !== "localhost") {

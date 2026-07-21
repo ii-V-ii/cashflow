@@ -12,6 +12,7 @@ vi.mock("@/server/auth", () => ({
 import { hashKey } from "@tanstack/react-query"
 
 import { GET as listAccountsRoute } from "@/app/api/v1/accounts/route"
+import { GET as getMonthlySettlementRoute } from "@/app/api/v1/settlements/monthly/route"
 import {
   GET as listTransactionsRoute,
   POST as postTransactionRoute,
@@ -83,7 +84,7 @@ async function envelopeData(response: Response): Promise<unknown> {
 }
 
 describe("거래 화면 SSR 프리페치 정합", () => {
-  test("dehydrate된 월 원장·계좌 데이터가 REST 응답 data와 동일하다", async () => {
+  test("dehydrate된 월 원장(1페이지)·계좌·월 결산 데이터가 REST 응답 data와 동일하다", async () => {
     const ym = currentYmSeoul()
 
     // 현재 월에 속하는 거래 1건 생성 (RPC 경유 — 실제 서비스 경로)
@@ -107,24 +108,37 @@ describe("거래 화면 SSR 프리페치 정합", () => {
     const state = await prefetchDehydratedState(transactionsPrefetchEntries({}))
     expect(state).not.toBeNull()
 
-    // 클라이언트 훅이 받을 REST 응답 (getTransactionsMonth와 동일 쿼리스트링)
+    // 클라이언트 훅이 받을 REST 응답 (getTransactionsMonth(ym, 1)과 동일 쿼리스트링 — limit 20)
     const [year, month] = ym.split("-").map(Number)
     const lastDay = new Date(year, month, 0).getDate()
     const monthUrl =
       `http://test/api/v1/transactions?from=${ym}-01` +
-      `&to=${ym}-${String(lastDay).padStart(2, "0")}&page=1&limit=100`
+      `&to=${ym}-${String(lastDay).padStart(2, "0")}&page=1&limit=20`
     const restMonth = await envelopeData(
       await listTransactionsRoute(new Request(monthUrl)),
     )
     const restAccounts = await envelopeData(await listAccountsRoute())
+    const restSettlement = await envelopeData(
+      await getMonthlySettlementRoute(
+        new Request(`http://test/api/v1/settlements/monthly?year=${year}&month=${month}`),
+      ),
+    )
 
-    expect(findDehydratedData(state!, qk.transactions.month(ym))).toEqual(restMonth)
+    expect(findDehydratedData(state!, qk.transactions.monthPage(ym, 1))).toEqual(
+      restMonth,
+    )
     expect(findDehydratedData(state!, qk.accounts.list())).toEqual(restAccounts)
+    expect(findDehydratedData(state!, qk.settlements.monthly(ym))).toEqual(
+      restSettlement,
+    )
 
     // 실제 데이터가 실렸는지 (빈 배열 동등성으로 통과하는 가짜 green 방지)
     const monthPage = restMonth as { items: { description: string }[]; total: number }
     expect(monthPage.total).toBe(1)
     expect(monthPage.items[0]?.description).toBe("프리페치점심")
+
+    const settlement = restSettlement as { expense: { total: number } }
+    expect(settlement.expense.total).toBe(12000)
   })
 })
 

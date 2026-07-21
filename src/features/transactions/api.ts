@@ -1,4 +1,5 @@
 import { apiFetch } from "@/lib/api/http"
+import { TRANSACTIONS_PAGE_SIZE } from "@/features/transactions/constants"
 import type {
   CreateTransactionInput,
   UpdateTransactionInput,
@@ -41,14 +42,21 @@ export function getTransactions(
   return apiFetch(`/api/v1/transactions?${toSearchParams(filter, page, limit)}`)
 }
 
-/** 월 원장 — ym('YYYY-MM') 전체를 1페이지로 (transactions.month 캐시 대상) */
-export function getTransactionsMonth(ym: string): Promise<PageDto<TransactionDto>> {
+/**
+ * 월 원장 — ym('YYYY-MM')을 페이지 단위로 조회 (transactions.monthPage(ym, page) 캐시 대상).
+ * 서버 ORDER BY date DESC 정렬이라 100건 초과 월에서도 절단 없이 다음 페이지로 이어진다.
+ */
+export function getTransactionsMonth(
+  ym: string,
+  page = 1,
+  limit: number = TRANSACTIONS_PAGE_SIZE,
+): Promise<PageDto<TransactionDto>> {
   const [year, month] = ym.split("-").map(Number)
   const lastDay = new Date(year, month, 0).getDate()
   return getTransactions(
     { from: `${ym}-01`, to: `${ym}-${String(lastDay).padStart(2, "0")}` },
-    1,
-    100,
+    page,
+    limit,
   )
 }
 

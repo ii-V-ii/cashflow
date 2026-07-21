@@ -1,13 +1,15 @@
 "use client"
 
 import { useRouter, useSearchParams } from "next/navigation"
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 
 import { BottomSheet } from "@/components/ui/bottom-sheet"
 import { Button } from "@/components/ui/button"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Input } from "@/components/ui/input"
 import { RecurringTab } from "@/features/recurring/components/recurring-tab"
+import { useMonthlySettlement } from "@/features/settlements/hooks/use-settlements"
+import { TRANSACTIONS_PAGE_SIZE } from "@/features/transactions/constants"
 import { MonthNavigator } from "@/features/transactions/components/month-navigator"
 import { TransactionForm } from "@/features/transactions/components/transaction-form"
 import { TransactionList } from "@/features/transactions/components/transaction-list"
@@ -66,12 +68,12 @@ export function TransactionsScreen() {
   )
 
   const isFiltered = Boolean(typeFilter || search)
-  // 정기 거래 탭에서는 거래 목록 요청을 만들지 않는다 (불필요한 왕복 방지)
-  const monthQuery = useTransactionsMonth(ym, tab === "all")
+  // 정기 거래 탭·필터 모드에서는 월 원장 요청을 만들지 않는다 (불필요한 왕복 방지)
+  const monthQuery = useTransactionsMonth(ym, page, tab === "all" && !isFiltered)
   const listQuery = useTransactionsList(
     { type: typeFilter, search: search || undefined },
     page,
-    20,
+    TRANSACTIONS_PAGE_SIZE,
     isFiltered && tab === "all",
   )
   const activeQuery = isFiltered ? listQuery : monthQuery
@@ -80,16 +82,21 @@ export function TransactionsScreen() {
     [activeQuery.data],
   )
 
-  const summary = useMemo(() => {
-    const source = monthQuery.data?.items ?? []
-    let income = 0
-    let expense = 0
-    for (const item of source) {
-      if (item.type === "income") income += item.amount
-      if (item.type === "expense") expense += item.amount
+  // 상단 요약은 결산 RPC 값을 그대로 쓴다 — 목록 items 클라이언트 합산 금지
+  // (100건 초과 월에서 원장 페이지 절단으로 합계가 실제보다 낮게 보이던 버그의 근본 수정).
+  const settlementQuery = useMonthlySettlement(ym, tab === "all" && !isFiltered)
+
+  // 페이지 범위 클램프 (LOW-7): 마지막 페이지의 마지막 항목을 삭제한 직후처럼 현재 page가
+  // 조회 결과의 유효 범위를 넘어서면 마지막 유효 페이지로 되돌린다. 무한 루프 방지: 클램프된
+  // page로 이동하면 다음 렌더에서 조건이 거짓이 되어 더 이상 setParams를 호출하지 않는다.
+  useEffect(() => {
+    if (!activeQuery.data) return
+    const { total, limit } = activeQuery.data
+    const lastPage = Math.max(1, Math.ceil(total / limit))
+    if (page > lastPage) {
+      setParams({ page: lastPage === 1 ? null : String(lastPage) })
     }
-    return { income, expense }
-  }, [monthQuery.data])
+  }, [activeQuery.data, page, setParams])
 
   const [editing, setEditing] = useState<TransactionDto | null>(null)
   const [deleting, setDeleting] = useState<TransactionDto | null>(null)
@@ -153,23 +160,42 @@ export function TransactionsScreen() {
         <>
           <MonthNavigator ym={ym} onChange={(next) => setParams({ ym: next, page: null })} />
 
-          {/* 상단 요약 — 카드 아님, 여백과 타이포만 (UI.md §3.2 레이아웃 리듬) */}
+          {/* 상단 요약 — 카드 아님, 여백과 타이포만 (UI.md §3.2 레이아웃 리듬).
+              결산 RPC(settlementQuery)를 그대로 표시 — 목록(activeQuery)과 로딩/에러가 독립적이다. */}
           {!isFiltered && (
             <section aria-label="월 요약" className="flex items-end justify-between px-1">
               <div>
                 <p className="text-xs text-ink-muted">이번 달 지출</p>
-                <p
-                  className="amount text-[length:var(--text-amount-hero)] font-bold leading-tight text-ink"
-                  data-testid="month-expense-total"
-                >
-                  {formatKrw(summary.expense)}
-                </p>
+                {settlementQuery.isPending ? (
+                  <div
+                    className="h-9 w-32 animate-pulse rounded-md bg-surface-sunken"
+                    aria-hidden
+                  />
+                ) : (
+                  <p
+                    className="amount text-[length:var(--text-amount-hero)] font-bold leading-tight text-ink"
+                    data-testid="month-expense-total"
+                  >
+                    {settlementQuery.isError
+                      ? "—"
+                      : formatKrw(settlementQuery.data.expense.total)}
+                  </p>
+                )}
               </div>
               <div className="text-right">
                 <p className="text-xs text-ink-muted">수입</p>
-                <p className="amount text-[length:var(--text-amount-md)] font-semibold text-income-fg">
-                  {formatKrw(summary.income)}
-                </p>
+                {settlementQuery.isPending ? (
+                  <div
+                    className="ml-auto h-6 w-20 animate-pulse rounded-md bg-surface-sunken"
+                    aria-hidden
+                  />
+                ) : (
+                  <p className="amount text-[length:var(--text-amount-md)] font-semibold text-income-fg">
+                    {settlementQuery.isError
+                      ? "—"
+                      : formatKrw(settlementQuery.data.income.total)}
+                  </p>
+                )}
               </div>
             </section>
           )}
@@ -226,8 +252,9 @@ export function TransactionsScreen() {
             <TransactionList items={items} onSelect={setEditing} />
           )}
 
-          {/* 필터 모드 페이지네이션 */}
-          {isFiltered && activeQuery.data && activeQuery.data.total > activeQuery.data.limit && (
+          {/* 페이지네이션 — 필터 모드뿐 아니라 기본(월 원장) 뷰에서도 100건 초과 시 노출한다
+              (버그: 이전엔 기본 뷰에 nav가 없어 절단된 나머지 페이지에 접근할 수 없었다) */}
+          {activeQuery.data && activeQuery.data.total > activeQuery.data.limit && (
             <nav aria-label="페이지" className="flex items-center justify-center gap-3 py-2">
               <Button
                 variant="outline"

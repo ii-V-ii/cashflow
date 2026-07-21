@@ -1,6 +1,11 @@
 "use client"
 
-import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query"
+import {
+  useMutation,
+  useQueryClient,
+  type QueryClient,
+  type QueryKey,
+} from "@tanstack/react-query"
 
 import {
   createTransaction,
@@ -29,7 +34,8 @@ type MonthPage = MonthCache<TransactionDto>
 
 /**
  * 거래 뮤테이션 3종 — ARCHITECTURE.md §7 낙관적 업데이트 프로토콜 그대로.
- * 낙관적 delta 대상은 transactions.month(ym) + accounts.list 2개 캐시로 한정.
+ * 낙관적 delta 대상은 transactions.month(ym) 프리픽스로 캐시된 모든
+ * monthPage(ym, page) + accounts.list 캐시로 한정 (101건+ 월에서도 페이지 절단 없이 반영).
  * onSettled 무효화 키는 §6.3 표(광역 무효화 금지 — 해당 월만).
  */
 
@@ -46,6 +52,11 @@ function invalidateTransactionScope(queryClient: QueryClient, ym: string): void 
   })
 }
 
+/**
+ * 월(ym) 프리픽스로 캐시된 모든 monthPage(ym, page) 항목을 수집한다.
+ * qk.transactions.month(ym)은 monthPage(ym, page)의 3-세그먼트 프리픽스이므로
+ * getQueriesData의 프리픽스 매칭으로 캐시된 모든 page를 한 번에 얻는다.
+ */
 async function snapshotAndCancel(queryClient: QueryClient, ym: string) {
   await Promise.all([
     queryClient.cancelQueries({ queryKey: qk.transactions.month(ym) }),
@@ -53,16 +64,37 @@ async function snapshotAndCancel(queryClient: QueryClient, ym: string) {
   ])
   return {
     ym,
-    month: queryClient.getQueryData<MonthPage>(qk.transactions.month(ym)),
+    monthPages: queryClient.getQueriesData<MonthPage>({
+      queryKey: qk.transactions.month(ym),
+    }),
     accounts: queryClient.getQueryData<AccountDto[]>(qk.accounts.list()),
   }
 }
 
 type Snapshot = Awaited<ReturnType<typeof snapshotAndCancel>>
+type MonthPageEntries = [QueryKey, MonthPage | undefined][]
+
+/** 스냅샷에 담긴 여러 monthPage 캐시를 그대로 복원한다 (rollback 계열 공통 — LOW-6) */
+function restoreMonthPages(queryClient: QueryClient, pages: MonthPageEntries): void {
+  for (const [key, data] of pages) {
+    queryClient.setQueryData(key, data)
+  }
+}
+
+/** 캐시된 여러 monthPage 각각에 동일한 순수 함수 updater를 적용한다 (다중 page 낙관적 업데이트 공통 — LOW-6) */
+function applyToMonthPages(
+  queryClient: QueryClient,
+  pages: MonthPageEntries,
+  updater: (cache: MonthPage | undefined) => MonthPage | undefined,
+): void {
+  for (const [key] of pages) {
+    queryClient.setQueryData<MonthPage | undefined>(key, updater)
+  }
+}
 
 function rollback(queryClient: QueryClient, snapshot: Snapshot | undefined): void {
   if (!snapshot) return
-  queryClient.setQueryData(qk.transactions.month(snapshot.ym), snapshot.month)
+  restoreMonthPages(queryClient, snapshot.monthPages)
   queryClient.setQueryData(qk.accounts.list(), snapshot.accounts)
 }
 
@@ -131,8 +163,16 @@ export function useCreateTransaction() {
         snapshot.accounts,
         queryClient.getQueryData<CategoryDto[]>(qk.categories.list()),
       )
+      // 낙관적 삽입은 1페이지에만 적용한다 — 오늘 날짜는 date DESC 정렬에서 항상
+      // 1페이지 상단에 위치한다. 1페이지가 캐시에 없으면 insertMonthRow가 undefined를
+      // 반환해 setQueryData가 no-op으로 넘어간다 (크래시 없음).
+      // 트레이드오프(의도됨): 1페이지가 이미 limit(20)건 가득 찬 상태였다면 낙관적
+      // 삽입 직후 잠깐 21건이 보이고 그 page의 total도 실제와 어긋난다. insertMonthRow는
+      // 순수 함수 계약(항상 삽입)을 지키므로 여기서 limit 초과분을 자르는 clamp를 하지
+      // 않는다 — onSettled의 invalidateTransactionScope가 곧바로 재조회해 정확한
+      // 페이지 경계로 자가 치유(self-heal)한다.
       queryClient.setQueryData<MonthPage | undefined>(
-        qk.transactions.month(ym),
+        qk.transactions.monthPage(ym, 1),
         (cache) => insertMonthRow(cache, optimisticRow),
       )
       queryClient.setQueryData<AccountDto[] | undefined>(qk.accounts.list(), (list) =>
@@ -147,7 +187,7 @@ export function useCreateTransaction() {
     onSuccess: (created, _input, context) => {
       // 임시 row를 서버 진실로 교체 (id 확정 → 수정/삭제 활성화)
       queryClient.setQueryData<MonthPage | undefined>(
-        qk.transactions.month(context.ym),
+        qk.transactions.monthPage(context.ym, 1),
         (cache) => replaceMonthRow(cache, context.optimisticId, created),
       )
     },
@@ -174,10 +214,16 @@ export function useUpdateTransaction() {
       const oldYm = ymOf(previous.date)
       const newYm = ymOf(input.date ?? previous.date)
       const snapshot = await snapshotAndCancel(queryClient, oldYm)
-      const newMonthSnapshot =
-        newYm === oldYm
-          ? undefined
-          : queryClient.getQueryData<MonthPage>(qk.transactions.month(newYm))
+      // 신 월(newYm)은 onMutate에서 직접 쓰지 않지만(§7 — 신 월은 무효화가 담당), 롤백
+      // 대상으로 스냅샷을 뜬다. cancelQueries 없이 뜨면 스냅샷 직후 도착하는 백그라운드
+      // refetch(신선한 서버 데이터)를 onError 롤백이 다시 스테일 값으로 덮어쓸 수 있다.
+      let newMonthPages: MonthPageEntries | undefined
+      if (newYm !== oldYm) {
+        await queryClient.cancelQueries({ queryKey: qk.transactions.month(newYm) })
+        newMonthPages = queryClient.getQueriesData<MonthPage>({
+          queryKey: qk.transactions.month(newYm),
+        })
+      }
 
       const merged: TransactionDto = {
         ...previous,
@@ -193,13 +239,10 @@ export function useUpdateTransaction() {
           input.categoryId === undefined ? previous.categoryId : input.categoryId,
       }
 
-      // 목록: 같은 월이면 치환, 월 이동이면 구 월에서 제거(신 월은 무효화가 담당 — §7)
-      queryClient.setQueryData<MonthPage | undefined>(
-        qk.transactions.month(oldYm),
-        (cache) =>
-          newYm === oldYm
-            ? replaceMonthRow(cache, id, merged)
-            : removeMonthRow(cache, id),
+      // 목록: 같은 월이면 캐시된 모든 page에서 치환, 월 이동이면 구 월 모든 page에서
+      // 제거한다(신 월은 무효화가 담당 — §7). id가 없는 page는 순수 함수가 no-op 처리.
+      applyToMonthPages(queryClient, snapshot.monthPages, (cache) =>
+        newYm === oldYm ? replaceMonthRow(cache, id, merged) : removeMonthRow(cache, id),
       )
       // 잔액: 이전 거래의 역(−)delta + 새 값의 delta 순차 적용 (§7 update)
       queryClient.setQueryData<AccountDto[] | undefined>(qk.accounts.list(), (list) => {
@@ -208,15 +251,12 @@ export function useUpdateTransaction() {
         return applyBalanceDeltas(reversed, balanceDeltas(merged), 1)
       })
 
-      return { ...snapshot, oldYm, newYm, newMonthSnapshot }
+      return { ...snapshot, oldYm, newYm, newMonthPages }
     },
     onError: (_error, _variables, context) => {
       rollback(queryClient, context)
-      if (context && context.newYm !== context.oldYm) {
-        queryClient.setQueryData(
-          qk.transactions.month(context.newYm),
-          context.newMonthSnapshot,
-        )
+      if (context && context.newYm !== context.oldYm && context.newMonthPages) {
+        restoreMonthPages(queryClient, context.newMonthPages)
       }
       showToast("수정에 실패했어요. 다시 시도해주세요.", "error")
     },
@@ -240,9 +280,8 @@ export function useDeleteTransaction() {
       const ym = ymOf(previous.date)
       const snapshot = await snapshotAndCancel(queryClient, ym)
 
-      queryClient.setQueryData<MonthPage | undefined>(
-        qk.transactions.month(ym),
-        (cache) => removeMonthRow(cache, previous.id),
+      applyToMonthPages(queryClient, snapshot.monthPages, (cache) =>
+        removeMonthRow(cache, previous.id),
       )
       queryClient.setQueryData<AccountDto[] | undefined>(qk.accounts.list(), (list) =>
         list ? applyBalanceDeltas(list, balanceDeltas(previous), -1) : list,

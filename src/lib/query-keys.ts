@@ -15,6 +15,8 @@ export const qk = {
     list: (filter: TransactionFilter, page: number, limit: number) =>
       [...qk.transactions.all, "list", filter, page, limit] as const,
     month: (ym: string) => [...qk.transactions.all, "month", ym] as const,
+    monthPage: (ym: string, page = 1) =>
+      [...qk.transactions.month(ym), page] as const,
     detail: (id: string) => [...qk.transactions.all, "detail", id] as const,
   },
   accounts: {

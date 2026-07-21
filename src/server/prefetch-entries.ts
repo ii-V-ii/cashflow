@@ -1,5 +1,6 @@
 import "server-only"
 
+import { TRANSACTIONS_PAGE_SIZE } from "@/features/transactions/constants"
 import { qk } from "@/lib/query-keys"
 import {
   budgetActualsQuerySchema,
@@ -98,7 +99,7 @@ export function dashboardPrefetchEntries(): PrefetchEntry[] {
   ]
 }
 
-/** 거래 — 월 원장(또는 필터 목록/정기 규칙) + 폼용 계좌·지출 카테고리 */
+/** 거래 — 월 원장(또는 필터 목록/정기 규칙) + 월 결산 + 폼용 계좌·지출 카테고리 */
 export function transactionsPrefetchEntries(sp: RawSearchParams): PrefetchEntry[] {
   const entries: PrefetchEntry[] = []
   const tab = first(sp.tab) === "recurring" ? "recurring" : "all"
@@ -111,37 +112,49 @@ export function transactionsPrefetchEntries(sp: RawSearchParams): PrefetchEntry[
   if (tab === "recurring") {
     entries.push({ queryKey: qk.recurring.list(), queryFn: listRecurring })
   } else {
-    // useTransactionsMonth(ym) — getTransactionsMonth와 동일한 from/to/page/limit
-    if (YM_PATTERN.test(ym)) {
+    // 필터 모드에서는 월 원장·월 결산이 불필요하다 — 화면 훅의
+    // enabled: tab==='all' && !isFiltered 조건을 그대로 재현해 게이팅한다.
+    if (!isFiltered && YM_PATTERN.test(ym)) {
       const [year, month] = ym.split("-").map(Number)
       const lastDay = new Date(year, month, 0).getDate()
+      // useTransactionsMonth(ym, page) — getTransactionsMonth와 동일한 from/to/page/limit.
+      // 실제 URL의 page를 그대로 써야 한다 — 하드코딩된 1을 쓰면 클라이언트가 구독하는
+      // page(딥링크·페이지 이동)와 어긋나 SSR 프리페치가 무의미해지고 클라가 이중 페치한다.
       const parsed = listTransactionsQuerySchema.safeParse({
         from: `${ym}-01`,
         to: `${ym}-${String(lastDay).padStart(2, "0")}`,
-        page: 1,
-        limit: 100,
+        page,
+        limit: TRANSACTIONS_PAGE_SIZE,
       })
       if (parsed.success) {
         entries.push({
-          queryKey: qk.transactions.month(ym),
+          queryKey: qk.transactions.monthPage(ym, page),
           queryFn: () => listTransactions(parsed.data),
         })
       }
+      // useMonthlySettlement(ym) — 상단 요약 카드
+      const settlementParsed = settlementMonthlyQuerySchema.safeParse({ year, month })
+      if (settlementParsed.success) {
+        entries.push({
+          queryKey: qk.settlements.monthly(ym),
+          queryFn: () => getMonthlySettlement(settlementParsed.data),
+        })
+      }
     }
-    // useTransactionsList({ type, search: search || undefined }, page, 20)
+    // useTransactionsList({ type, search: search || undefined }, page, TRANSACTIONS_PAGE_SIZE)
     if (isFiltered) {
       const parsed = listTransactionsQuerySchema.safeParse({
         type,
         search: search || undefined,
         page,
-        limit: 20,
+        limit: TRANSACTIONS_PAGE_SIZE,
       })
       if (parsed.success) {
         entries.push({
           queryKey: qk.transactions.list(
             { type: parsed.data.type, search: parsed.data.search },
             page,
-            20,
+            TRANSACTIONS_PAGE_SIZE,
           ),
           queryFn: () => listTransactions(parsed.data),
         })
